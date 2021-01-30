@@ -24,5 +24,5 @@ class IntegratedGradient(Gradient):
             current_input = baseline + (i/nr_steps) * (in_values - baseline)
             gradients.append(super(IntegratedGradient, self).calculate_mask(current_input, label))
 
-        saliency = ((in_values-baseline)*np.average(gradients)).squeeze().detach().numpy()
+        saliency = ((in_values-baseline)*np.average(gradients, axis=0)).squeeze().detach().numpy()
         return saliency
