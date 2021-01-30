@@ -1,13 +1,15 @@
-from base import SaliencyMethod
-
 from torch import nn
 import torch
 import numpy as np
 
+from base import SaliencyMethod
 
 #
-# A saliency method where the saliency map is defined by the gradient with respect to the label
+#  Deep inside convolutional networks: Visualising image classification models and saliency maps. (Simonyan et al. 2013)
+#  https://arxiv.org/pdf/1312.6034.pdf
 #
+
+
 class Gradient(SaliencyMethod):
 
     def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):

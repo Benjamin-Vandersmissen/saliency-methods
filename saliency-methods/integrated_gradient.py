@@ -4,6 +4,10 @@ from torch import nn
 
 from gradient import Gradient
 
+#
+#  Axiomatic Attribution for Deep Networks (Sundararajan et al. 2017)
+#
+
 
 class IntegratedGradient(Gradient):
 
@@ -18,7 +22,7 @@ class IntegratedGradient(Gradient):
 
         for i in range(1, nr_steps+1):
             current_input = baseline + (i/nr_steps) * (in_values - baseline)
-            gradients.append(super(IntegratedGradient, self).calculate_mask(net, current_input, label))
+            gradients.append(super(IntegratedGradient, self).calculate_mask(current_input, label))
 
         saliency = ((in_values-baseline)*np.average(gradients)).squeeze().detach().numpy()
         return saliency

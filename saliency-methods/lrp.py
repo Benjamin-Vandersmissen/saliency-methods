@@ -6,6 +6,12 @@ from copy import deepcopy
 
 from base import SaliencyMethod
 
+#
+#  On Pixel-Wise Explanations for Non-Linear Classifier Decision by Layer-wise Relevance Propagation (Bach et al. 2015)
+#
+#  Implementation based on "Layerwise Relevance Propagation : an Overview” (Montavon et al. 2017)
+#
+
 
 class LRP(SaliencyMethod):
     def __init__(self, net: nn.Module,smoothed=False, smooth_rate=10):
@@ -14,7 +20,7 @@ class LRP(SaliencyMethod):
         self.layers = None
 
     @staticmethod
-    def __newlayer(layer: nn.Module, func: Callable[[nn.Parameter], nn.Parameter]) -> nn.Module:
+    def __modify_layer(layer: nn.Module, func: Callable[[nn.Parameter], nn.Parameter]) -> nn.Module:
         new_layer = deepcopy(layer)
 
         try:
@@ -47,7 +53,7 @@ class LRP(SaliencyMethod):
 
         return layers
 
-    # Remove nn,Flatten layer and replace nn.Linear layers with nn.Conv2D layers
+    # Remove nn,Flatten layer and replace nn.Linear layers with nn.Conv2D layers.
     def __process_layers(self, shape: tuple):
         dummy_value = torch.zeros(shape)
 
@@ -74,6 +80,7 @@ class LRP(SaliencyMethod):
 
         self.layers = new_layers
 
+    # TODO: allow for different rules
     def calculate_mask(self, in_values: torch.Tensor, label: torch.Tensor) -> np.ndarray:
         if self.layers is None:
             self.layers = self.__extract_layers(self.net, in_values.shape)
@@ -92,14 +99,22 @@ class LRP(SaliencyMethod):
             activation = (activations[j].data).requires_grad_(True)
             layer = self.layers[j]
 
-            rho = lambda p: p  # Default rules.
-            incr = lambda z: z + 1e-9  # Default rules.
+            # As suggested in the paper, use 3 different rules, depending on the layer depth
+            if j <= len(self.layers) // 3:
+                rho = lambda p: p + 0.25 * p.clamp(min=0)
+                incr = lambda z: z + 1e-9
+            elif j <= (2 * len(self.layers)) // 3:
+                rho = lambda p: p
+                incr = lambda z: z + 1e-9 + 0.25 * ((z ** 2).mean() ** .5).data
+            else:
+                rho = lambda p: p
+                incr = lambda z: z + 1e-9
 
             if isinstance(layer, nn.MaxPool2d):  # replace max pool with avg pool
                 layer = nn.AvgPool2d(layer.kernel_size, layer.stride)
 
             if isinstance(layer, nn.Conv2d) or isinstance(layer, nn.MaxPool2d) or isinstance(layer, nn.AvgPool2d):
-                z = incr(self.__newlayer(layer, rho).forward(activation))  # step 1
+                z = incr(self.__modify_layer(layer, rho).forward(activation))  # step 1
                 s = (relevances[-1] / z).data  # step 2
                 (z * s).sum().backward()  # step 3
                 c = activation.grad
@@ -117,8 +132,8 @@ class LRP(SaliencyMethod):
         ub = (activation.data * 0 + 1).requires_grad_(True)  # upper bound on the activation
 
         z = layer.forward(activation) + 1e-9
-        z -= self.__newlayer(layer, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+
-        z -= self.__newlayer(layer, lambda p: p.clamp(max=0)).forward(ub)  # - ub * w-
+        z -= self.__modify_layer(layer, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+
+        z -= self.__modify_layer(layer, lambda p: p.clamp(max=0)).forward(ub)  # - ub * w-
 
         s = (relevances[-1] / z).data  # step 2
         (z * s).sum().backward()  # step 3
