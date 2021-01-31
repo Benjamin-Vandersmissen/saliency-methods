@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from collections.abc import Callable
 from abc import ABC, abstractmethod
-
+import copy
 
 #
 #  A base class for the saliency methods
@@ -59,7 +59,7 @@ class SaliencyMethod(ABC):
         self.smoothed = smoothed
         self.smooth_rate = smooth_rate
         self.noise_func = noise_function
-        self.net = net
+        self.net = copy.deepcopy(net)
 
         self.net.eval()
 
@@ -104,6 +104,8 @@ class SaliencyMethod(ABC):
             A saliency map for the first image in the batch.
 
         """
+        assert(in_values.shape[0] == 1)
+
         if self.smoothed:
             saliency_maps = np.empty((self.smooth_rate, in_values.shape[1], in_values.shape[2], in_values.shape[3]))
             for i in range(self.smooth_rate):

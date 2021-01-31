@@ -5,6 +5,7 @@ from collections.abc import Callable
 from copy import deepcopy
 
 from base import SaliencyMethod
+from utils import extract_layers
 
 #
 #  On Pixel-Wise Explanations for Non-Linear Classifier Decision by Layer-wise Relevance Propagation (Bach et al. 2015)
@@ -52,41 +53,6 @@ class LRP(SaliencyMethod):
             pass
 
         return new_layer
-
-    @staticmethod
-    def _extract_layers(net: nn.Module, shape: tuple) -> list:
-        """ Extract the layers from a neural network in the order they are activated in.
-
-        Parameters
-        ----------
-
-        net : torch.nn.module
-            The neural network from which to extract the layers.
-
-        shape : 4D-tuple of shape (batch, channel, width, height)
-            The shape of the input the neural network expects.
-
-        Returns
-        -------
-
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
-
-        """
-        dummy_value = torch.zeros(shape)
-        layers, handles = [], []
-
-        func = lambda module, input, output: layers.append(module)
-
-        for name, m in net.named_modules():
-            if len(list(m.named_modules())) == 1:  # Only ever have the singular layers, no sub networks etc
-                handles.append(m.register_forward_hook(func))
-
-        net.forward(dummy_value)
-        for handle in handles:
-            handle.remove()
-
-        return layers
 
     # Remove nn,Flatten layer and replace nn.Linear layers with nn.Conv2D layers.
     def _process_layers(self, shape: tuple):
@@ -145,7 +111,7 @@ class LRP(SaliencyMethod):
 
         """
         if self.layers is None:
-            self.layers = self._extract_layers(self.net, in_values.shape)
+            self.layers = extract_layers(self.net, in_values.shape)
             self._process_layers(in_values.shape)
 
         activations = [in_values] + [None] * len(self.layers)

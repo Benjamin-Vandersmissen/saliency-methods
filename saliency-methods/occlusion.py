@@ -65,7 +65,7 @@ class Occlusion(SaliencyMethod):
 
         if resize:
             saliency = F.interpolate(saliency, in_shape)
-        saliency.squeeze_()
+        saliency.squeeze_().detach().numpy()
         return saliency
 
     def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor,
