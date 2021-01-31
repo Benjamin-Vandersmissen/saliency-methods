@@ -15,7 +15,25 @@ class Gradient(SaliencyMethod):
     def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
         super(Gradient, self).__init__(net, smoothed, smooth_rate)
 
-    def calculate_mask(self, in_values: torch.Tensor, label: torch.Tensor) -> np.ndarray:
+    def _calculate(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the Gradient of the input w.r.t. the desired label.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            The image we want to explain. Only the first in the batch is considered.
+
+        label : 1D-tensor
+            The label we want to explain for.
+
+        Returns
+        -------
+
+        3D-numpy.ndarray
+            A saliency map for the first image in the batch.
+
+        """
 
         in_values = in_values.data.requires_grad_(True)
         self.net.zero_grad()
@@ -25,3 +43,24 @@ class Gradient(SaliencyMethod):
         saliency = in_values.grad.squeeze().detach().numpy()
 
         return saliency
+
+    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the Gradient of the input w.r.t. the desired label. Smoothens the map if necessary.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            The image we want to explain. Only the first in the batch is considered.
+
+        label : 1D-tensor
+            The label we want to explain for.
+
+        Returns
+        -------
+
+        3D-numpy.ndarray
+            A saliency map for the first image in the batch.
+
+        """
+        return super().calculate_map(in_values, label, **kwargs)

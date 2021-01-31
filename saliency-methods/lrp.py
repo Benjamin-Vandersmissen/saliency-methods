@@ -14,13 +14,31 @@ from base import SaliencyMethod
 
 
 class LRP(SaliencyMethod):
-    def __init__(self, net: nn.Module,smoothed=False, smooth_rate=10):
+    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
         super().__init__(net, smoothed, smooth_rate)
 
         self.layers = None
 
     @staticmethod
-    def __modify_layer(layer: nn.Module, func: Callable[[nn.Parameter], nn.Parameter]) -> nn.Module:
+    def _modify_layer(layer: nn.Module, func: Callable[[nn.Parameter], nn.Parameter]) -> nn.Module:
+        """ Modify a layer by applying a function on the weights and biases.
+
+        Parameters
+        ----------
+
+        layer : torch.nn.module
+            The layer to modify.
+
+        func : callable
+            The function that will modify the weights and biases.
+
+        Returns
+        -------
+
+        new_layer : torch.nn.module
+            The layer with modified weights and biases.
+
+        """
         new_layer = deepcopy(layer)
 
         try:
@@ -35,9 +53,26 @@ class LRP(SaliencyMethod):
 
         return new_layer
 
-    # Extract the layers used in the network in the order they are applied.
     @staticmethod
-    def __extract_layers(net: nn.Module, shape: tuple) -> list:
+    def _extract_layers(net: nn.Module, shape: tuple) -> list:
+        """ Extract the layers from a neural network in the order they are activated in.
+
+        Parameters
+        ----------
+
+        net : torch.nn.module
+            The neural network from which to extract the layers.
+
+        shape : 4D-tuple of shape (batch, channel, width, height)
+            The shape of the input the neural network expects.
+
+        Returns
+        -------
+
+        3D-numpy.ndarray
+            A saliency map for the first image in the batch.
+
+        """
         dummy_value = torch.zeros(shape)
         layers, handles = [], []
 
@@ -54,7 +89,16 @@ class LRP(SaliencyMethod):
         return layers
 
     # Remove nn,Flatten layer and replace nn.Linear layers with nn.Conv2D layers.
-    def __process_layers(self, shape: tuple):
+    def _process_layers(self, shape: tuple):
+        """ Remove the flatten layer and replace the Linear layers with equivalent Conv2D layers.
+
+        Parameters
+        ----------
+
+        shape : 4D-tuple of shape (batch, channel, width, height)
+            The shape of the input the neural network expects.
+
+        """
         dummy_value = torch.zeros(shape)
 
         new_layers = []
@@ -81,10 +125,28 @@ class LRP(SaliencyMethod):
         self.layers = new_layers
 
     # TODO: allow for different rules
-    def calculate_mask(self, in_values: torch.Tensor, label: torch.Tensor) -> np.ndarray:
+    def _calculate(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the Layer-wise Relevance Propagation w.r.t. the desired label.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            The image we want to explain. Only the first in the batch is considered.
+
+        label : 1D-tensor
+            The label we want to explain for.
+
+        Returns
+        -------
+
+        3D-numpy.ndarray
+            A saliency map for the first image in the batch.
+
+        """
         if self.layers is None:
-            self.layers = self.__extract_layers(self.net, in_values.shape)
-            self.__process_layers(in_values.shape)
+            self.layers = self._extract_layers(self.net, in_values.shape)
+            self._process_layers(in_values.shape)
 
         activations = [in_values] + [None] * len(self.layers)
         for i in range(len(self.layers)):
@@ -96,7 +158,7 @@ class LRP(SaliencyMethod):
 
         #  ! use .data to make a leaf node so we can use autograd
         for j in range(len(self.layers) - 1, 0, -1):
-            activation = (activations[j].data).requires_grad_(True)
+            activation = activations[j].data.requires_grad_(True)
             layer = self.layers[j]
 
             # As suggested in the paper, use 3 different rules, depending on the layer depth
@@ -114,7 +176,7 @@ class LRP(SaliencyMethod):
                 layer = nn.AvgPool2d(layer.kernel_size, layer.stride)
 
             if isinstance(layer, nn.Conv2d) or isinstance(layer, nn.MaxPool2d) or isinstance(layer, nn.AvgPool2d):
-                z = incr(self.__modify_layer(layer, rho).forward(activation))  # step 1
+                z = incr(self._modify_layer(layer, rho).forward(activation))  # step 1
                 s = (relevances[-1] / z).data  # step 2
                 (z * s).sum().backward()  # step 3
                 c = activation.grad
@@ -132,8 +194,8 @@ class LRP(SaliencyMethod):
         ub = (activation.data * 0 + 1).requires_grad_(True)  # upper bound on the activation
 
         z = layer.forward(activation) + 1e-9
-        z -= self.__modify_layer(layer, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+
-        z -= self.__modify_layer(layer, lambda p: p.clamp(max=0)).forward(ub)  # - ub * w-
+        z -= self._modify_layer(layer, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+
+        z -= self._modify_layer(layer, lambda p: p.clamp(max=0)).forward(ub)  # - ub * w-
 
         s = (relevances[-1] / z).data  # step 2
         (z * s).sum().backward()  # step 3
@@ -142,3 +204,23 @@ class LRP(SaliencyMethod):
 
         saliency = relevances[-1].squeeze().detach().numpy()
         return saliency
+
+    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the Layer-wise Relevance Propagation w.r.t. the desired label. Smoothens the map if necessary
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            The image we want to explain. Only the first in the batch is considered.
+
+        label : 1D-tensor
+            The label we want to explain for.
+
+        Returns
+        -------
+
+        3D-numpy.ndarray
+            A saliency map for the first image in the batch.
+        """
+        return super().calculate_map(in_values, label, **kwargs)
