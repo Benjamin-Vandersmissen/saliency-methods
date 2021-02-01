@@ -1,12 +1,11 @@
 import numpy as np
 import torch
 from torch import nn
-import torch.nn.functional as F
 
 from cam import _CAM
 
 #
-#  Learning Deep Features for Discriminative Localization (Zhou et al. 2016)
+#  Grad-CAM: Visual explanations from deep networks via gradient-based localization (Selvaraju et al. 2017)
 #
 
 
