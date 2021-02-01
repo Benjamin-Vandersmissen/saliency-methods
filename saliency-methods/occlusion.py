@@ -3,14 +3,15 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from base import SaliencyMethod
+from .base import SaliencyMethod
 
-#
-#  Visualizing and Understanding Convolutional Networks (Zeiler et al. 2014)
-#
+__all__ = ['Occlusion']
 
 
 class Occlusion(SaliencyMethod):
+    #
+    #  Visualizing and Understanding Convolutional Networks (Zeiler et al. 2014)
+    #
 
     def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
         super().__init__(net, smoothed, smooth_rate)
@@ -61,7 +62,11 @@ class Occlusion(SaliencyMethod):
 
                 score = self.net(occluded).squeeze()[label].item()
 
-                saliency[:, :, j, i] = initial_score - score
+                saliency[:, :, j, i] = (initial_score - score)/3  # distribute relevance equally over channels
+
+                # We distribute the saliency equally over the channels, as the original approach occluded the pixels.
+                # This means that we modify all channels in each iteration. If we were to occlude each channel
+                # individually, we could have scores for each channel.
 
         if resize:
             saliency = F.interpolate(saliency, in_shape)

@@ -104,10 +104,10 @@ class SaliencyMethod(ABC):
             A saliency map for the first image in the batch.
 
         """
-        assert(in_values.shape[0] == 1)
+        assert(in_values.shape[0] == 1 and len(in_values.shape) == 4)
 
         if self.smoothed:
-            saliency_maps = np.empty((self.smooth_rate, in_values.shape[1], in_values.shape[2], in_values.shape[3]))
+            saliency_maps = np.empty((self.smooth_rate, *in_values.shape[1:]))
             for i in range(self.smooth_rate):
                 noisy_input = self.noise_func(in_values.clone())
                 saliency_maps[i] = self._calculate(noisy_input, label, **kwargs)

@@ -4,17 +4,19 @@ from torch import nn
 from collections.abc import Callable
 from copy import deepcopy
 
-from base import SaliencyMethod
-from utils import extract_layers
+from .base import SaliencyMethod
+from .utils import extract_layers
 
-#
-#  On Pixel-Wise Explanations for Non-Linear Classifier Decision by Layer-wise Relevance Propagation (Bach et al. 2015)
-#
-#  Implementation based on "Layerwise Relevance Propagation : an Overview” (Montavon et al. 2017)
-#
+__all__ = ['LRP']
 
 
 class LRP(SaliencyMethod):
+    #
+    #  On Pixel-Wise Explanations for Non-Linear Classifier Decision by Layer-wise Relevance Propagation (Bach et al. 2015)
+    #
+    #  Implementation based on "Layerwise Relevance Propagation : an Overview” (Montavon et al. 2017)
+    #
+
     def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
         super().__init__(net, smoothed, smooth_rate)
 
