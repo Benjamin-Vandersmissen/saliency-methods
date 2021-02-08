@@ -63,6 +63,24 @@ class SaliencyMethod(ABC):
 
         self.net.eval()
 
+    @staticmethod
+    def _normalize(saliency: np.ndarray) -> np.ndarray:
+        """Normalize a saliency map to range [0,1].
+
+        Parameters
+        ----------
+
+        saliency: 3D-np.ndarray of shape (channel, width, height)
+            The calculated saliency map.
+
+        Returns
+        -------
+
+        3D-np.ndarray of shape (channel, width, height)
+            The saliency map normalized over all values.
+        """
+        return (saliency - saliency.min()) / (saliency.max()-saliency.min())
+
     @abstractmethod
     def _calculate(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate a saliency map for the given input

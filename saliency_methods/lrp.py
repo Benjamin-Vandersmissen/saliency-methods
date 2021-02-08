@@ -11,11 +11,26 @@ __all__ = ['LRP']
 
 
 class LRP(SaliencyMethod):
-    #
-    #  On Pixel-Wise Explanations for Non-Linear Classifier Decision by Layer-wise Relevance Propagation (Bach et al. 2015)
-    #
-    #  Implementation based on "Layerwise Relevance Propagation : an Overview” (Montavon et al. 2017)
-    #
+    """ Calculate GradCAM for the input w.r.t. the desired label.
+
+    Parameters
+    ----------
+
+    net : torch.nn.module
+        The network used for generating a saliency map.
+
+    smoothed : bool
+        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
+
+    smooth_rate : int
+        How many iterations of SMOOTHGRAD to use.
+
+    References
+    ----------
+
+    On Pixel-Wise Explanations for Non-Linear Classifier Decision by Layer-wise Relevance Propagation (Bach et al. 2015)
+    Implementation based on "Layerwise Relevance Propagation : an Overview” (Montavon et al. 2017)
+    """
 
     def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
         super().__init__(net, smoothed, smooth_rate)
@@ -56,7 +71,6 @@ class LRP(SaliencyMethod):
 
         return new_layer
 
-    # Remove nn,Flatten layer and replace nn.Linear layers with nn.Conv2D layers.
     def _process_layers(self, shape: tuple):
         """ Remove the flatten layer and replace the Linear layers with equivalent Conv2D layers.
 
@@ -172,23 +186,3 @@ class LRP(SaliencyMethod):
 
         saliency = relevances[-1].squeeze().detach().numpy()
         return saliency
-
-    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
-        """ Calculates the Layer-wise Relevance Propagation w.r.t. the desired label. Smoothens the map if necessary
-
-        Parameters
-        ----------
-
-        in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
-
-        label : 1D-tensor
-            The label we want to explain for.
-
-        Returns
-        -------
-
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
-        """
-        return super().calculate_map(in_values, label, **kwargs)

@@ -10,9 +10,27 @@ __all__ = ["_CAM", "CAM", "GradCAM"]
 
 
 class _CAM(SaliencyMethod):
+    """ A base class for CAM based methods
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
+    Parameters
+    ----------
+
+    smoothed : bool
+        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
+
+    smooth_rate : int
+        How many iterations of SMOOTHGRAD to use.
+
+    resize : bool
+        Whether to resize the map (True) or not (False).
+
+    normalise : bool
+        Whether to normalise the map (True) or not (False).
+    """
+    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10, resize: bool = True, normalise: bool = True):
         super().__init__(net, smoothed, smooth_rate)
+        self.resize = resize
+        self.normalised = normalise
         self.conv_layer: nn.Conv2d = None
         self.activation_hook = None
         self.conv_out = None
@@ -31,7 +49,8 @@ class _CAM(SaliencyMethod):
         def _conv_hook(module, inp, outp):
             self.conv_out = outp
 
-        self.activation_hook = self.conv_layer.register_forward_hook(_conv_hook)
+        if self.activation_hook is None:
+            self.activation_hook = self.conv_layer.register_forward_hook(_conv_hook)
 
     def _get_weights(self, label: torch.Tensor) -> torch.Tensor:
         """Get the weights used for the CAM calculations
@@ -51,7 +70,7 @@ class _CAM(SaliencyMethod):
         """
         raise NotImplementedError
 
-    def _calculate(self, in_values: torch.tensor, label: torch.Tensor, resize: bool = True, **kwargs) -> np.ndarray:
+    def _calculate(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate Class Activation Mapping for the given input.
 
         Parameters
@@ -63,9 +82,6 @@ class _CAM(SaliencyMethod):
         label : 1D-tensor
             The label we want to explain for.
 
-        resize : boolean, default=True
-            Resize the saliency map using bilinear interpolation.
-
         Returns
         -------
 
@@ -73,6 +89,13 @@ class _CAM(SaliencyMethod):
             A saliency map for the first image in the batch.
 
         """
+        if self.layers is None:
+            self.layers = extract_layers(self.net, in_values.shape)
+            self._find_conv_layer()
+            self._hook_conv_layer()
+
+        _ = self.net(in_values)  # so we can find the hooked value
+
 
         weights = self._get_weights(label)
 
@@ -80,52 +103,44 @@ class _CAM(SaliencyMethod):
 
         saliency[:] = F.relu((weights * self.conv_out.squeeze()).sum(dim=0))/3  # Distribute relevance equally over channels
 
-        if resize:
+        if self.resize:
             saliency = F.interpolate(saliency.unsqueeze(0), in_values.shape[2:], mode='bilinear').squeeze()
 
         saliency = saliency.detach().numpy()
 
+        if self.normalised:
+            saliency = self._normalize(saliency)
+
         return saliency
-
-    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, resize: bool = True, **kwargs) -> np.ndarray:
-        """ Calculate Class Activation Mapping for the given input.
-
-        Parameters
-        ----------
-
-        in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
-
-        label : 1D-tensor
-            The label we want to explain for.
-
-        resize : boolean, default=True
-            Resize the saliency map using bilinear interpolation.
-
-        Returns
-        -------
-
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
-
-        """
-        self.layers = extract_layers(self.net, in_values.shape)
-        if self.conv_layer is None:
-            self._find_conv_layer()
-            self._hook_conv_layer()
-
-        _ = self.net(in_values)  # so we can find the hooked value
-
-        return super().calculate_map(in_values, label, resize=resize, **kwargs)
 
 
 class CAM(_CAM):
-    #
-    #  Learning Deep Features for Discriminative Localization (Zhou et al. 2016)
-    #
+    """ Calculate the Class Activation Map of the input w.r.t. the desired label.
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
-        super().__init__(net, smoothed, smooth_rate)
+    Parameters
+    ----------
+
+    net : torch.nn.module
+        The network used for generating a saliency map.
+
+    smoothed : bool
+        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
+
+    smooth_rate : int
+        How many iterations of SMOOTHGRAD to use.
+
+    resize : bool
+        Resize the map via bilinear interpolation if True, otherwise don't resize.
+
+    References
+    ----------
+
+    Learning Deep Features for Discriminative Localization (Zhou et al. 2016)
+
+    """
+
+    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10, **kwargs):
+        super().__init__(net, smoothed, smooth_rate, **kwargs)
         self.fc_layer: nn.Linear = None
 
     def _find_fc_layer(self):
@@ -177,43 +192,42 @@ class CAM(_CAM):
             A saliency map for the first image in the batch.
 
         """
-        if self.fc_layer is None:
+        if self.layers is None:
+            self.layers = extract_layers(self.net, in_values.shape)
+            self._find_conv_layer()
+            self._hook_conv_layer()
             self._find_fc_layer()
 
-        return super()._calculate(in_values, label, resize, **kwargs)
-
-    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, resize: bool = True, **kwargs) -> np.ndarray:
-        """ Calculate Class Activation Mapping for the given input.
-
-        Parameters
-        ----------
-
-        in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
-
-        label : 1D-tensor
-            The label we want to explain for.
-
-        resize : boolean, default=True
-            Resize the saliency map using bilinear interpolation.
-
-        Returns
-        -------
-
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
-
-        """
-        return super().calculate_map(in_values, label, resize=resize, **kwargs)
+        return super()._calculate(in_values, label, **kwargs)
 
 
 class GradCAM(_CAM):
-    #
-    #  Grad-CAM: Visual explanations from deep networks via gradient-based localization (Selvaraju et al. 2017)
-    #
+    """ Calculate GradCAM for the input w.r.t. the desired label.
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
-        super().__init__(net, smoothed, smooth_rate)
+    Parameters
+    ----------
+
+    net : torch.nn.module
+        The network used for generating a saliency map.
+
+    smoothed : bool
+        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
+
+    smooth_rate : int
+        How many iterations of SMOOTHGRAD to use.
+
+    resize : bool
+        Resize the map via bilinear interpolation if True, otherwise don't resize.
+
+    References
+    ----------
+
+    Grad-CAM: Visual explanations from deep networks via gradient-based localization (Selvaraju et al. 2017)
+
+    """
+
+    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10, **kwargs):
+        super().__init__(net, smoothed, smooth_rate, **kwargs)
         self.grad_hook = None
         self.grad = None
 
@@ -222,8 +236,8 @@ class GradCAM(_CAM):
 
         def _grad_hook(module, inp, outp):
             self.grad = outp[0]
-
-        self.grad_hook = self.conv_layer.register_backward_hook(_grad_hook)
+        if self.grad_hook is None:
+            self.grad_hook = self.conv_layer.register_backward_hook(_grad_hook)
 
     def _get_weights(self, label: torch.Tensor) -> torch.Tensor:
         """ Get the weights used for the CAM calculations
@@ -285,35 +299,12 @@ class GradCAM(_CAM):
             A saliency map for the first image in the batch.
 
         """
-        if self.grad_hook is None:
+        if self.layers is None:
+            self.layers = extract_layers(self.net, in_values.shape)
             self._find_conv_layer()
             self._hook_conv_layer()
             self._hook_grad()
 
         self._backprop(in_values, label)
 
-        return super()._calculate(in_values, label, resize, **kwargs)
-
-    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, resize: bool = True, **kwargs) -> np.ndarray:
-        """ Calculate Class Activation Mapping for the given input.
-
-        Parameters
-        ----------
-
-        in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
-
-        label : 1D-tensor
-            The label we want to explain for.
-
-        resize : boolean, default=True
-            Resize the saliency map using bilinear interpolation.
-
-        Returns
-        -------
-
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
-
-        """
-        return super().calculate_map(in_values, label, resize=resize, **kwargs)
+        return super()._calculate(in_values, label, **kwargs)
