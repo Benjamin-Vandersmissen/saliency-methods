@@ -102,7 +102,7 @@ class Occlusion(SaliencyMethod):
 
                 score = self.net(occluded).squeeze()[label].item()
 
-                saliency[:, :, j, i] = (initial_score - score)/3  # distribute relevance equally over channels
+                saliency[:, :, i, j] = (initial_score - score)/3  # distribute relevance equally over channels
 
                 # We distribute the saliency equally over the channels, as the original approach occluded the pixels.
                 # This means that we modify all channels in each iteration. If we were to occlude each channel
