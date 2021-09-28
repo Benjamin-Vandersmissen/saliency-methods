@@ -17,12 +17,6 @@ class Occlusion(SaliencyMethod):
     net : torch.nn.module
         The network used for generating a saliency map.
 
-    smoothed : bool
-        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
-
-    smooth_rate : int
-        How many iterations of SMOOTHGRAD to use.
-
     mgf : function
         A Mask Generating Function, which accepts the image and the size and outputs a mask of the correct size.
         If occlusion_window is set, this parameter does nothing
@@ -54,17 +48,15 @@ class Occlusion(SaliencyMethod):
         mean = image.mean()
         return torch.ones(shape)*mean
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10, mgf=mean_mask.__func__, occlusion_size=(3, 8, 8),
-                 occlusion_window: torch.Tensor = None, resize: bool = False):
+    def __init__(self, net: nn.Module, mgf=mean_mask.__func__, occlusion_size=(3, 8, 8), occlusion_window: torch.Tensor = None, resize: bool = False, **kwargs):
 
         self.mgf = mgf
         self.occlusion_size = occlusion_size
         self.occlusion_window = occlusion_window
         self.resize = resize
-        super().__init__(net, smoothed, smooth_rate)
+        super().__init__(net, **kwargs)
 
-    def _calculate(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
-
+    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Occlusion map of the input w.r.t. the desired label.
 
         Parameters
@@ -100,7 +92,7 @@ class Occlusion(SaliencyMethod):
                 occluded[:, :, i * occlusion_shape[0]:(i + 1) * occlusion_shape[0],
                          j * occlusion_shape[1]:(j + 1) * occlusion_shape[1]] = occlusion_window
 
-                score = self.net(occluded).squeeze()[label].item()
+                score = self.net(occluded.to(self.device)).squeeze()[label].item()
 
                 saliency[:, :, i, j] = (initial_score - score)/3  # distribute relevance equally over channels
 

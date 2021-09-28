@@ -16,12 +16,6 @@ class Gradient(SaliencyMethod):
     net : torch.nn.module
         The network used for generating a saliency map.
 
-    smoothed : bool
-        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
-
-    smooth_rate : int
-        How many iterations of SMOOTHGRAD to use.
-
     References
     ----------
 
@@ -29,10 +23,10 @@ class Gradient(SaliencyMethod):
         https://arxiv.org/pdf/1312.6034.pdf
     """
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
-        super(Gradient, self).__init__(net, smoothed, smooth_rate)
+    def __init__(self, net: nn.Module, **kwargs):
+        super(Gradient, self).__init__(net, **kwargs)
 
-    def _calculate(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Gradient of the input w.r.t. the desired label.
 
         Parameters
@@ -51,6 +45,7 @@ class Gradient(SaliencyMethod):
             A saliency map for the first image in the batch.
 
         """
+        in_values = in_values.to(self.device)
 
         in_values = in_values.data.requires_grad_(True)
         self.net.zero_grad()
@@ -71,12 +66,6 @@ class GradientXInput(Gradient):
     net : torch.nn.module
         The network used for generating a saliency map.
 
-    smoothed : bool
-        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
-
-    smooth_rate : int
-        How many iterations of SMOOTHGRAD to use.
-
     References
     ----------
 
@@ -84,10 +73,10 @@ class GradientXInput(Gradient):
         https://arxiv.org/pdf/1312.6034.pdf
     """
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
-        super(Gradient, self).__init__(net, smoothed, smooth_rate)
+    def __init__(self, net: nn.Module, **kwargs):
+        super(Gradient, self).__init__(net, **kwargs)
 
-    def _calculate(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Gradient of the input w.r.t. the desired label and multiply it with the input.
 
         Parameters
@@ -106,7 +95,7 @@ class GradientXInput(Gradient):
             A saliency map for the first image in the batch.
 
         """
-        gradient = super()._calculate(in_values, label, **kwargs)
+        gradient = super().calculate_map(in_values, label, **kwargs)
         saliency = gradient * in_values.squeeze().detach().numpy()
 
         return saliency
@@ -121,12 +110,6 @@ class IntegratedGradient(Gradient):
     net : torch.nn.module
         The network used for generating a saliency map.
 
-    smoothed : bool
-        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
-
-    smooth_rate : int
-        How many iterations of SMOOTHGRAD to use.
-
     baseline : str or 4D-tensor of shape (batch, channel, width, height)
         The baseline image to interpolate with the input. ("mean" = take the mean of the input image)
 
@@ -140,12 +123,12 @@ class IntegratedGradient(Gradient):
 
     """
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10, baseline="mean", nr_steps=50):
-        super().__init__(net, smoothed, smooth_rate)
+    def __init__(self, net: nn.Module,  baseline="mean", nr_steps=50, **kwargs):
+        super().__init__(net, **kwargs)
         self.baseline = baseline
         self.nr_steps = nr_steps
 
-    def _calculate(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs):
+    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs):
         """ Calculates the Integrated Gradient of the input w.r.t. the desired label.
 
         Parameters
@@ -176,7 +159,7 @@ class IntegratedGradient(Gradient):
 
         for i in range(1, self.nr_steps + 1):
             current_input = baseline + (i / self.nr_steps) * (in_values - baseline)
-            gradients.append(super(IntegratedGradient, self)._calculate(current_input, label, **kwargs))
+            gradients.append(super(IntegratedGradient, self).calculate_map(current_input, label, **kwargs))
 
         saliency = ((in_values - baseline) * np.average(gradients, axis=0)).squeeze().detach().numpy()
         return saliency

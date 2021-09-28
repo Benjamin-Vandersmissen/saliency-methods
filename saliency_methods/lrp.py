@@ -32,8 +32,8 @@ class LRP(SaliencyMethod):
     Implementation based on "Layerwise Relevance Propagation : an Overview” (Montavon et al. 2017)
     """
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10):
-        super().__init__(net, smoothed, smooth_rate)
+    def __init__(self, net: nn.Module, **kwargs):
+        super().__init__(net)
 
         self.layers = None
 
@@ -81,7 +81,7 @@ class LRP(SaliencyMethod):
             The shape of the input the neural network expects.
 
         """
-        dummy_value = torch.zeros(shape)
+        dummy_value = torch.zeros(shape).to(self.device)
 
         new_layers = []
         for layer in self.layers:
@@ -97,7 +97,7 @@ class LRP(SaliencyMethod):
                     new_layer = nn.Conv2d(m, n, 1)
                     new_layer.weight = nn.Parameter(layer.weight.reshape(n, m, 1, 1))
                 new_layer.bias = nn.Parameter(layer.bias)
-                new_layers.append(new_layer)
+                new_layers.append(new_layer.to(self.device))
                 dummy_value = new_layer.forward(dummy_value)
 
             elif not isinstance(layer, nn.Flatten):
@@ -107,7 +107,7 @@ class LRP(SaliencyMethod):
         self.layers = new_layers
 
     # TODO: allow for different rules
-    def _calculate(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Layer-wise Relevance Propagation w.r.t. the desired label.
 
         Parameters
@@ -126,6 +126,8 @@ class LRP(SaliencyMethod):
             A saliency map for the first image in the batch.
 
         """
+        in_values.to(self.device)
+
         if self.layers is None:
             self.layers = extract_layers(self.net, in_values.shape)
             self._process_layers(in_values.shape)
@@ -159,6 +161,7 @@ class LRP(SaliencyMethod):
 
             if isinstance(layer, nn.Conv2d) or isinstance(layer, nn.MaxPool2d) or isinstance(layer, nn.AvgPool2d):
                 z = incr(self._modify_layer(layer, rho).forward(activation))  # step 1
+                z[z == 0] = 1e-9  # for numeric stability
                 s = (relevances[-1] / z).data  # step 2
                 (z * s).sum().backward()  # step 3
                 c = activation.grad
@@ -175,9 +178,11 @@ class LRP(SaliencyMethod):
         lb = (activation.data * 0).requires_grad_(True)  # lower bound on the activation
         ub = (activation.data * 0 + 1).requires_grad_(True)  # upper bound on the activation
 
-        z = layer.forward(activation) + 1e-9
+        z = layer.forward(activation)
         z -= self._modify_layer(layer, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+
         z -= self._modify_layer(layer, lambda p: p.clamp(max=0)).forward(ub)  # - ub * w-
+
+        z[z == 0] = 1e-9  # for numerical stability
 
         s = (relevances[-1] / z).data  # step 2
         (z * s).sum().backward()  # step 3

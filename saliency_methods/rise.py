@@ -18,12 +18,6 @@ class Rise(SaliencyMethod):
     net : torch.nn.module
         The network used for generating a saliency map.
 
-    smoothed : bool
-        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
-
-    smooth_rate : int
-        How many iterations of SMOOTHGRAD to use.
-
     nr_masks : int
         How many masks are used for the RISE algorithm (These are reused for each explanation.
 
@@ -35,12 +29,12 @@ class Rise(SaliencyMethod):
 
     """
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10, nr_masks=2500, sample_size=(7, 7), p=0.1, **kwargs):
+    def __init__(self, net: nn.Module, nr_masks=2500, sample_size=(7, 7), p=0.1, **kwargs):
         self.nr_masks = nr_masks
         self.sample_size = sample_size
         self.p = p
         self.masks = None
-        super().__init__(net, smoothed, smooth_rate, **kwargs)
+        super().__init__(net, **kwargs)
 
     def _generate_mask(self, image_size):
         """ Generates input masks according to the Rise Paper
@@ -70,7 +64,7 @@ class Rise(SaliencyMethod):
 
         return mask
 
-    def _calculate(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
 
         """ Calculates the Occlusion map of the input w.r.t. the desired label.
 
@@ -90,6 +84,7 @@ class Rise(SaliencyMethod):
             A saliency map for the first image in the batch.
 
         """
+        in_values = in_values.to(self.device)
 
         image_size = in_values.shape[2:]
         if self.masks is None:
@@ -101,7 +96,7 @@ class Rise(SaliencyMethod):
         scores = np.empty(self.nr_masks)
         for i in range(self.nr_masks):
             mask = self.masks[i]
-            masked_in = in_values * mask
+            masked_in = (in_values * mask).to(self.device)
             scores[i] = F.softmax(self.net(masked_in), dim=1).squeeze()[label].item()
 
         saliency = np.empty((3, *image_size))

@@ -21,7 +21,9 @@ def extract_layers(net: nn.Module, shape: tuple) -> list:
         A saliency map for the first image in the batch.
 
     """
-    dummy_value = torch.zeros(shape)
+    device = next(net.parameters()).device
+
+    dummy_value = torch.zeros(shape).to(device)
     layers, handles = [], []
 
     func = lambda module, input, output: layers.append(module)
