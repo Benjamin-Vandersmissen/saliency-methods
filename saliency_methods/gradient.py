@@ -26,7 +26,7 @@ class Gradient(SaliencyMethod):
     def __init__(self, net: nn.Module, **kwargs):
         super(Gradient, self).__init__(net, **kwargs)
 
-    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Gradient of the input w.r.t. the desired label.
 
         Parameters
@@ -35,24 +35,26 @@ class Gradient(SaliencyMethod):
         in_values : 4D-tensor of shape (batch, channel, width, height)
             The image we want to explain. Only the first in the batch is considered.
 
-        label : 1D-tensor
-            The label we want to explain for.
+        labels : 1D-tensor
+            The labels we want to explain for.
 
         Returns
         -------
 
-        3D-numpy.ndarray
+        4D-numpy.ndarray
             A saliency map for the first image in the batch.
 
         """
+        batch_size = in_values.shape[0]
+        labels = labels.reshape((batch_size, 1))
         in_values = in_values.to(self.device)
 
         in_values = in_values.data.requires_grad_(True)
         self.net.zero_grad()
 
-        out_values = self.net(in_values)[:, label]  # select relevant score
-        out_values.backward()
-        saliency = in_values.grad.squeeze().detach().numpy()
+        out_values = torch.gather(self.net(in_values), 1, labels)  # select relevant score
+        out_values.backward(gradient=torch.ones_like(out_values))
+        saliency = in_values.grad.detach().numpy()
 
         return saliency
 
@@ -76,7 +78,7 @@ class GradientXInput(Gradient):
     def __init__(self, net: nn.Module, **kwargs):
         super(Gradient, self).__init__(net, **kwargs)
 
-    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+    def calculate_map(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Gradient of the input w.r.t. the desired label and multiply it with the input.
 
         Parameters
@@ -85,7 +87,7 @@ class GradientXInput(Gradient):
         in_values : 4D-tensor of shape (batch, channel, width, height)
             The image we want to explain. Only the first in the batch is considered.
 
-        label : 1D-tensor
+        labels : 1D-tensor
             The label we want to explain for.
 
         Returns
@@ -95,8 +97,8 @@ class GradientXInput(Gradient):
             A saliency map for the first image in the batch.
 
         """
-        gradient = super().calculate_map(in_values, label, **kwargs)
-        saliency = gradient * in_values.squeeze().detach().numpy()
+        gradient = super().calculate_map(in_values, labels, **kwargs)
+        saliency = gradient * in_values.detach().numpy()
 
         return saliency
 

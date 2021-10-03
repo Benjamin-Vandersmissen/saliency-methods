@@ -30,7 +30,7 @@ class _CAM(SaliencyMethod):
         self.layers = None
 
     def _find_conv_layer(self):
-        """ Find the convolutional layer for calculating the activation maps."""
+        """ Find the last convolutional layer for calculating the activation maps."""
         for layer in self.layers[::-1]:
             if isinstance(layer, nn.Conv2d):
                 self.conv_layer = layer
@@ -51,19 +51,19 @@ class _CAM(SaliencyMethod):
         Parameters
         ----------
 
-        label : 1D-tensor that contains the label
-            The label of which we want to calculate the weights.
+        label : 1D-tensor that contains the labels
+            The labels for which we want to calculate the weights.
 
         Returns
         -------
 
-        weights : 3D-tensor of shape (channel, width, height)
+        weights : 4D-tensor of shape (batch, channel, width, height)
             The weights used in the linear combination of activation maps.
 
         """
         raise NotImplementedError
 
-    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate Class Activation Mapping for the given input.
 
         Parameters
@@ -72,8 +72,8 @@ class _CAM(SaliencyMethod):
         in_values : 4D-tensor of shape (batch, channel, width, height)
             The image we want to explain. Only the first in the batch is considered.
 
-        label : 1D-tensor
-            The label we want to explain for.
+        labels : 1D-tensor containing *batch* elements
+            The labels we want to explain for.
 
         Returns
         -------
@@ -83,6 +83,8 @@ class _CAM(SaliencyMethod):
 
         """
         in_values = in_values.to(self.device)
+        batch_size = in_values.shape[0]
+        channels = in_values.shape[1]
 
         if self.layers is None:
             self.layers = extract_layers(self.net, in_values.shape)
@@ -91,14 +93,15 @@ class _CAM(SaliencyMethod):
 
         _ = self.net(in_values)  # so we can find the hooked value
 
-        weights = self._get_weights(label)
+        weights = self._get_weights(labels)
 
-        saliency = torch.empty((3, self.conv_out.shape[2], self.conv_out.shape[3]))
+        saliency = torch.empty((channels, batch_size, *self.conv_out.shape[2:]))
 
-        saliency[:] = F.relu((weights * self.conv_out.squeeze()).sum(dim=0))/3  # Distribute relevance equally over channels
+        saliency[:] = F.relu((weights * self.conv_out).sum(dim=1))
+        saliency = saliency.transpose(0, 1)
 
         if self.resize:
-            saliency = F.interpolate(saliency.unsqueeze(0), in_values.shape[2:], mode='bilinear').squeeze()
+            saliency = F.interpolate(saliency, in_values.shape[2:], mode='bilinear')
 
         saliency = saliency.detach().numpy()
 
@@ -127,8 +130,8 @@ class CAM(_CAM):
 
     """
 
-    def __init__(self, net: nn.Module, smoothed=False, smooth_rate=10, **kwargs):
-        super().__init__(net, smoothed, smooth_rate, **kwargs)
+    def __init__(self, net: nn.Module, **kwargs):
+        super().__init__(net, **kwargs)
         self.fc_layer: nn.Linear = None
 
     def _find_fc_layer(self):
@@ -138,27 +141,27 @@ class CAM(_CAM):
                 self.fc_layer = layer
                 break
 
-    def _get_weights(self, label: torch.Tensor) -> torch.Tensor:
+    def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
         """ Get the weights used for the CAM calculations.
 
         Parameters
         ----------
 
-        label : 1D-tensor that contains the label
-            The label of which we want to calculate the weights.
+        labels : 1D-tensor that contains the labels
+            The labels for which we want to calculate the weights.
 
         Returns
         -------
 
-        weights : 3D-tensor of shape (channel, width, height)
+        weights : 4D-tensor of shape (channel, width, height)
             The weights used in the linear combination of activation maps.
 
         """
-        weights = self.fc_layer.weight[label].squeeze()
-        weights = weights.view((weights.shape[0], 1, 1))
+        weights = self.fc_layer.weight[labels]
+        weights = weights.view((*weights.shape[0:2], 1, 1))
         return weights
 
-    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate Class Activation Mapping for the given input.
 
         Parameters
@@ -167,16 +170,13 @@ class CAM(_CAM):
         in_values : 4D-tensor of shape (batch, channel, width, height)
             The image we want to explain. Only the first in the batch is considered.
 
-        label : 1D-tensor
-            The label we want to explain for.
-
-        resize : boolean, default=True
-            Resize the saliency map using bilinear interpolation.
+        labels : 1D-tensor
+            The labels we want to explain for.
 
         Returns
         -------
 
-        3D-numpy.ndarray
+        4D-numpy.ndarray
             A saliency map for the first image in the batch.
 
         """
@@ -186,7 +186,7 @@ class CAM(_CAM):
             self._hook_conv_layer()
             self._find_fc_layer()
 
-        return super().calculate_map(in_values, label, **kwargs)
+        return super().calculate_map(in_values, labels, **kwargs)
 
 
 class GradCAM(_CAM):
@@ -199,7 +199,7 @@ class GradCAM(_CAM):
         The network used for generating a saliency map.
 
     resize : bool
-        Resize the map via bilinear interpolation if True, otherwise don't resize.
+        Resize the map via bi-linear interpolation if True, otherwise don't resize.
 
     References
     ----------
@@ -216,7 +216,7 @@ class GradCAM(_CAM):
     def _hook_grad(self):
         """Hook the last convolutional layer to find its gradients."""
 
-        def _grad_hook(module, inp, outp):
+        def _grad_hook(_, __, outp):
             self.grad = outp[0]
         if self.grad_hook is None:
             self.grad_hook = self.conv_layer.register_backward_hook(_grad_hook)
@@ -227,21 +227,21 @@ class GradCAM(_CAM):
         Parameters
         ----------
 
-        label : 1D-tensor that contains the label
-            The label of which we want to calculate the weights.
+        label : 1D-tensor that contains the labels
+            The labels for which we want to calculate the weights.
 
         Returns
         -------
 
-        weights : 3D-tensor of shape (channel, width, height)
+        weights : 4D-tensor of shape (batch, channel, width, height)
             The weights used in the linear combination of activation maps.
 
         """
-        weights = self.grad.mean(dim=(2, 3)).squeeze()  # Global Average Pool over the feature map
-        weights = weights.view((weights.shape[0], 1, 1))
+        weights = self.grad.mean(dim=(2, 3))  # Global Average Pool over the feature map
+        weights = weights.view((*weights.shape[0:2], 1, 1))
         return weights
 
-    def _backprop(self, in_values: torch.Tensor, label: torch.Tensor):
+    def _backprop(self, in_values: torch.Tensor, labels: torch.Tensor):
         """Backpropagate the score of the input w.r.t. the expected label.
 
         Parameters
@@ -250,14 +250,15 @@ class GradCAM(_CAM):
         in_values : 4D-tensor of shape (batch, channel, width, height)
             Input values to backpropagate.
 
-        label : 1D-tensor
+        labels : 1D-tensor
             Label to backpropagate for.
         """
 
+        labels = labels.view((1, labels.shape[0]))
         in_values.requires_grad_(True)
         scores = self.net(in_values)
         self.net.zero_grad()
-        scores[:, label].sum().backward()
+        torch.gather(scores, 1, labels).sum(dim=0, keepdim=True).backward(torch.ones_like(labels))
 
     def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, resize: bool = True, **kwargs) -> np.ndarray:
         """ Calculate Class Activation Mapping for the given input.
@@ -266,10 +267,10 @@ class GradCAM(_CAM):
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
+            The images we want to explain.
 
         label : 1D-tensor
-            The label we want to explain for.
+            The labels we want to explain for.
 
         resize : boolean, default=True
             Resize the saliency map using bilinear interpolation.
@@ -277,11 +278,12 @@ class GradCAM(_CAM):
         Returns
         -------
 
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
+        4D-numpy.ndarray
+            A batch of saliency maps.
 
         """
         in_values.to(self.device)
+
         if self.layers is None:
             self.layers = extract_layers(self.net, in_values.shape)
             self._find_conv_layer()

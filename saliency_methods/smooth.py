@@ -71,9 +71,9 @@ class Smooth(SaliencyMethod):
         """
         in_values.to(self.device)
 
-        saliency_maps = np.empty((self.smooth_rate, *in_values.shape[1:]))
+        saliency_maps = np.empty((self.smooth_rate, *in_values.shape[:]))
         for i in range(self.smooth_rate):
             noisy_input = self.noise_func(in_values.clone())
-            saliency_maps[i] = self.method.calculate_map(noisy_input, label, **kwargs)
+            saliency_maps[i, :] = self.method.calculate_map(noisy_input, label, **kwargs)
         saliency = saliency_maps.mean(axis=0).squeeze()
         return saliency

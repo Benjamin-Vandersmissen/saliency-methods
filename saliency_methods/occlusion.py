@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -50,11 +52,11 @@ class Occlusion(SaliencyMethod):
 
     @staticmethod
     def uniform_mask(image: torch.tensor, shape: tuple, value: float = 0):
-        return torch.ones(shape)*value
+        return torch.full(shape, value)
 
     @staticmethod
     def mean_mask(image: torch.tensor, shape: tuple):
-        return image.mean(dim=[1, 2, 3]).repeat((image.shape[0], *shape))
+        return image.mean(dim=[1, 2, 3], keepdim=True).tile((1, *shape))
 
     def __init__(self, net: nn.Module, mgf=mean_mask.__func__, occlusion_size=(3, 8, 8), occlusion_window: torch.Tensor = None, resize: bool = False, **kwargs):
 
@@ -80,25 +82,32 @@ class Occlusion(SaliencyMethod):
         -------
 
         4D-numpy.ndarray
-            A saliency map for the batch.
+            A batch of saliency maps.
 
         """
+
         batch_size = in_values.shape[0]
         channels = in_values.shape[1]
-        labels = labels.reshape((1, batch_size))
+        labels = labels.reshape((batch_size, 1))
 
         occlusion_window = self.occlusion_window
         if occlusion_window is None:
-            occlusion_window = self.mgf(in_values, (batch_size, *self.occlusion_size)).to(self.device)
+            occlusion_window = self.mgf(in_values, self.occlusion_size).to(self.device)
 
         in_shape = in_values.shape[2:]  # Don't count batch & channels
         occlusion_shape = occlusion_window.shape[2:]
+
+        if in_shape[0] % occlusion_shape[0] != 0 or in_shape[1] % occlusion_shape[1]:
+            print("The occlusion window (size: {0[0]}, {0[1]}) doesn't fit exactly in the image (size: {1[0]}, {1[1]})."
+                  .format(occlusion_shape, in_shape), file=sys.stderr)
+            print("This might lead to cut-off data at the edges!", file=sys.stderr)
+
         saliency = torch.zeros((batch_size, channels,
                                 in_shape[0] // occlusion_shape[0], in_shape[1] // occlusion_shape[1]))
 
         initial_scores = torch.gather(self.net(in_values), 1, labels).cpu()
 
-        with torch.no_grad:
+        with torch.no_grad():
             for i in range(0, in_shape[0] // occlusion_shape[0]):
                 for j in range(0, in_shape[1] // occlusion_shape[1]):
                     occluded = in_values.clone().to(self.device)
@@ -107,7 +116,7 @@ class Occlusion(SaliencyMethod):
 
                     scores = torch.gather(self.net(occluded), 1, labels).cpu()
                     del occluded
-                    saliency[:, :, i, j] = (initial_scores - scores).reshape(batch_size, 1).repeat(1, channels)
+                    saliency[:, :, i, j] = (initial_scores - scores).view(batch_size, 1).repeat(1, channels)
 
                     # We distribute the saliency equally over the channels, as the original approach occluded the pixels.
                     # This means that we modify all channels in each iteration. If we were to occlude each channel
