@@ -54,7 +54,7 @@ class Gradient(SaliencyMethod):
 
         out_values = torch.gather(self.net(in_values), 1, labels)  # select relevant score
         out_values.backward(gradient=torch.ones_like(out_values))
-        saliency = in_values.grad.detach().numpy()
+        saliency = in_values.grad.detach().cpu().numpy()
 
         return saliency
 
@@ -98,7 +98,7 @@ class GradientXInput(Gradient):
 
         """
         gradient = super().calculate_map(in_values, labels, **kwargs)
-        saliency = gradient * in_values.detach().numpy()
+        saliency = gradient * in_values.detach().cpu().numpy()
 
         return saliency
 
@@ -163,5 +163,5 @@ class IntegratedGradient(Gradient):
             current_input = baseline + (i / self.nr_steps) * (in_values - baseline)
             gradients.append(super(IntegratedGradient, self).calculate_map(current_input, label, **kwargs))
 
-        saliency = ((in_values - baseline) * np.average(gradients, axis=0)).squeeze().detach().numpy()
+        saliency = ((in_values - baseline) * np.average(gradients, axis=0)).squeeze().detach().cpu().numpy()
         return saliency

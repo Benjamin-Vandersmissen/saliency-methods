@@ -59,7 +59,7 @@ class Rise(SaliencyMethod):
         delta_w = random.randint(0, mask.shape[0] - image_size[0])
         delta_h = random.randint(0, mask.shape[1] - image_size[1])
 
-        mask = mask[delta_w:image_size[0] + delta_w, delta_h:image_size[1] + delta_h].detach().numpy()
+        mask = mask[delta_w:image_size[0] + delta_w, delta_h:image_size[1] + delta_h].detach().cpu().numpy()
 
         return mask
 
@@ -102,7 +102,7 @@ class Rise(SaliencyMethod):
                 masked_in = (in_values * mask).to(self.device)
                 scores[:, i] = torch.gather(F.softmax(self.net(masked_in), dim=1), 1, label).cpu()
 
-        scores = scores.detach().numpy()
+        scores = scores.detach().cpu().numpy()
         saliency = np.empty((channels, batch_size, *image_size))
         saliency[:, :] = (1 / (self.p * self.nr_masks) * (scores.reshape((batch_size, self.nr_masks, 1, 1)) * self.masks).sum(axis=1))
 

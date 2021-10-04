@@ -103,7 +103,7 @@ class _CAM(SaliencyMethod):
         if self.resize:
             saliency = F.interpolate(saliency, in_values.shape[2:], mode='bilinear')
 
-        saliency = saliency.detach().numpy()
+        saliency = saliency.detach().cpu().numpy()
 
         if self.normalised:
             saliency = self._normalize(saliency)

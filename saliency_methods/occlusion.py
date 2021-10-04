@@ -124,5 +124,5 @@ class Occlusion(SaliencyMethod):
 
         if self.resize:
             saliency = F.interpolate(saliency, in_shape)
-        saliency = saliency.detach().numpy()
+        saliency = saliency.detach().cpu().numpy()
         return saliency

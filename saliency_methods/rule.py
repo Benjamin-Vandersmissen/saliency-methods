@@ -36,7 +36,7 @@ class Rule(ABC):
             else:
                 relevances.append(relevances[-1])
 
-        return relevances[-1].detach().numpy()
+        return relevances[-1].detach().cpu().numpy()
 
     @staticmethod
     def _modify_layer(layer: nn.Module, func) -> nn.Module:
