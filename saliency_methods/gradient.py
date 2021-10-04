@@ -149,11 +149,13 @@ class IntegratedGradient(Gradient):
             A saliency map for the first image in the batch.
 
         """
+        in_values = in_values.to(self.device)
+
         baseline = self.baseline
         if baseline is None:
-            baseline = torch.zeros_like(in_values)
+            baseline = torch.zeros_like(in_values, device=self.device)
         elif baseline == "mean":
-            baseline = torch.ones_like(in_values) * in_values.mean()
+            baseline = torch.ones_like(in_values, device=self.device) * in_values.mean()
         else:
             assert(isinstance(baseline, torch.Tensor))
             assert(baseline.shape == in_values.shape)
@@ -164,5 +166,6 @@ class IntegratedGradient(Gradient):
             gradients.append(super(IntegratedGradient, self).calculate_map(current_input, label, **kwargs))
 
         in_values = in_values.detach().cpu().numpy()
-        saliency = ((in_values - baseline) * np.average(gradients, axis=0)).squeeze().detach().cpu().numpy()
+        baseline = baseline.detach().cpu().numpy()
+        saliency = ((in_values - baseline) * np.average(gradients, axis=0))
         return saliency
