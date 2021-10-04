@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+EPSILON = 1e-12
+
 
 def extract_layers(net: nn.Module, shape: tuple) -> list:
     """ Extract the layers from a neural network in the order they are activated in.

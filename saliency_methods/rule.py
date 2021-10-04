@@ -3,6 +3,8 @@ from torch import nn
 from collections.abc import Callable
 from copy import deepcopy
 
+from .utils import EPSILON
+
 import torch
 
 
@@ -79,7 +81,7 @@ class LRP0(Rule):
 
     def relevance(self, layer, activation, prev_relevance, layer_idx):
         z = self.incr(self._modify_layer(layer, self.rho).forward(activation))  # step 1
-        z[z == 0] = 1e-9  # for numeric stability
+        z[z == 0] = EPSILON  # for numeric stability
         s = (prev_relevance / z).data  # step 2
         (z * s).sum().backward()  # step 3
         c = activation.grad
@@ -119,7 +121,7 @@ class ZbRule(Rule):
         z -= self._modify_layer(layer, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+
         z -= self._modify_layer(layer, lambda p: p.clamp(max=0)).forward(ub)  # - ub * w-
 
-        z[z == 0] = 1e-9  # for numerical stability
+        z[z == 0] = EPSILON  # for numerical stability
 
         s = (prev_relevance / z).data  # step 2
         (z * s).sum().backward()  # step 3
