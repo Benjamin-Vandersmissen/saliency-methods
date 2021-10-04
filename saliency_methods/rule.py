@@ -39,7 +39,7 @@ class Rule(ABC):
         return relevances[-1].detach().numpy()
 
     @staticmethod
-    def _modify_layer(layer: nn.Module, func: Callable[[nn.Parameter], nn.Parameter]) -> nn.Module:
+    def _modify_layer(layer: nn.Module, func) -> nn.Module:
         """ Modify a layer by applying a function on the weights and biases.
 
         Parameters
