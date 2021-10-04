@@ -163,5 +163,6 @@ class IntegratedGradient(Gradient):
             current_input = baseline + (i / self.nr_steps) * (in_values - baseline)
             gradients.append(super(IntegratedGradient, self).calculate_map(current_input, label, **kwargs))
 
+        in_values = in_values.detach().cpu().numpy()
         saliency = ((in_values - baseline) * np.average(gradients, axis=0)).squeeze().detach().cpu().numpy()
         return saliency
