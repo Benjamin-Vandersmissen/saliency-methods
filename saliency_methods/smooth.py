@@ -27,7 +27,7 @@ class Smooth(SaliencyMethod):
             The input with added Gaussian Noise.
         """
 
-        return in_values + torch.normal(mean=mean, std=std, size=in_values.shape)
+        return in_values + torch.normal(mean=mean, std=std, size=in_values.shape).to(in_values.device)
 
     def __init__(self, method: SaliencyMethod, smooth_rate=10, noise_function = gaussian_noise.__func__):
         """ Create a new Smooth object.
