@@ -29,7 +29,7 @@ class Smooth(SaliencyMethod):
 
         return in_values + torch.normal(mean=mean, std=std, size=in_values.shape)
 
-    def __init__(self, method: SaliencyMethod, smooth_rate=10, noise_function: Callable[[]] = gaussian_noise.__func__):
+    def __init__(self, method: SaliencyMethod, smooth_rate=10, noise_function = gaussian_noise.__func__):
         """ Create a new Smooth object.
 
         Parameters
