@@ -253,11 +253,11 @@ class GradCAM(_CAM):
             Label to backpropagate for.
         """
 
-        labels = labels.view((1, labels.shape[0]))
+        labels = labels.view((labels.shape[0], 1))
         in_values.requires_grad_(True)
         scores = self.net(in_values)
         self.net.zero_grad()
-        torch.gather(scores, 1, labels).sum(dim=0, keepdim=True).backward(torch.ones_like(labels))
+        torch.gather(scores, 1, labels).sum(dim=1, keepdim=True).backward(torch.ones_like(labels))
 
     def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, resize: bool = True, **kwargs) -> np.ndarray:
         """ Calculate Class Activation Mapping for the given input.
