@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 
 EPSILON = 1e-12
 
@@ -39,3 +40,16 @@ def extract_layers(net: nn.Module, shape: tuple) -> list:
         handle.remove()
 
     return layers
+
+
+def importance(heatmaps):
+    shape = heatmaps.shape[2:]
+    heatmaps = np.sum(heatmaps, axis=1).reshape(heatmaps.shape[0], -1)  # Get relevance per pixel
+
+    index = np.array(np.unravel_index(np.argsort(- heatmaps, axis=1), shape))
+    return index
+
+
+def auc(points):
+    x_values = np.arange(0, 1+1/points.size(), 1/points.size())
+    return np.trapz(points, x_values)
