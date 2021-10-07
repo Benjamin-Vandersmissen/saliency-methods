@@ -1,8 +1,10 @@
 from torch import nn
 import torch
+import torch.nn.functional as F
 import numpy as np
 
 from .base import SaliencyMethod
+from .utils import EPSILON
 
 __all__ = ['Gradient', 'GradientXInput', 'IntegratedGradient']
 
@@ -169,3 +171,64 @@ class IntegratedGradient(Gradient):
         baseline = baseline.detach().cpu().numpy()
         saliency = ((in_values - baseline) * np.average(gradients, axis=0))
         return saliency
+
+
+class FullGradient(Gradient):
+    def __init__(self, net: nn.Module, **kwargs):
+        """ Calculate the Full gradient saliency map of the input w.r.t. the desired label.
+
+        Parameters
+        ----------
+
+        net : torch.nn.module
+            The network used for generating a saliency map.
+
+        References
+        ----------
+
+        Full-Gradient Representation for Neural Network Visualization (Srinivas et al. 2019)
+        """
+        super().__init__(net, **kwargs)
+
+        self.conv_biases = []
+        self.conv_gradients = []
+
+        self.hooks = []
+        for component in self.net.modules():
+            self.hooks.append(component.register_backward_hook(self._grad_bias_hook))
+
+    def _grad_bias_hook(self, module, _, out_grad):
+        if isinstance(module, nn.Conv2d) and module.bias is not None:
+            self.conv_gradients.append(out_grad[0])
+            self.conv_biases.append(module.bias.data)
+
+    @staticmethod
+    def _postprocess(tensor, shape):
+        tensor = torch.abs(tensor)
+
+        # Normalize to [0,1]
+        tensor -= tensor.amin(dim=(2, 3), keepdim=True)
+        # Use small epsilon for numerical stability
+        denominator = tensor.amax(dim=(2, 3), keepdim=True)
+        denominator[denominator == 0] = EPSILON
+        tensor /= denominator
+
+        # Resize to the correct size.
+        tensor = F.interpolate(tensor, shape[2:], mode='bilinear', align_corners=True)
+        return tensor
+
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        device = in_values.device
+        shape = in_values.shape
+
+        grad = torch.tensor(super().calculate_map(in_values, labels, **kwargs), device=device)
+        saliency = self._postprocess(grad, shape) * in_values
+        saliency = saliency.sum(dim=1, keepdim=True)
+
+        for i in range(len(self.conv_gradients)):
+            interpolated = self._postprocess(self.conv_gradients[i], shape)
+            interpolated *= self.conv_biases[i].view((1, self.conv_biases[i].shape[0], 1, 1))
+            saliency += interpolated.sum(dim=1, keepdim=True)
+
+        saliency = saliency.tile((1, shape[1], 1, 1))  # Convert to correct number of channels
+        return saliency.detach().cpu().numpy()
