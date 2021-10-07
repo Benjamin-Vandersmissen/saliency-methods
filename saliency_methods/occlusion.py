@@ -11,43 +11,8 @@ __all__ = ['Occlusion']
 
 
 class Occlusion(SaliencyMethod):
-    """ Calculate the occlusion map of the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    mgf : function
-        A Mask Generating Function, which accepts the image and the size and outputs a mask of the correct size.
-        If occlusion_window is set, this parameter does nothing
-
-    occlusion_size : 3D-tuple of shape (channel, width, height)
-        The size of the occlusion window. This should fit exactly in the input images.
-        If occlusion_window is set, this parameter does nothing
-
-    occlusion_window : torch.Tensor
-        If set, don't generate a mask for each different saliency map, but reuse this value.
-        The dimensions of this window should fit exactly in the input images.
-
-    resize : bool
-        Resize the map to the image size via nearest neighbours interpolation if True, otherwise don't resize.
-
-    Brief
-    -----
-
-    Create a saliency map by systematically occluding a part of an image and calculating the difference between
-    the prediction score of the un-occluded image and occluded image. This difference is then the importance score
-    of the occluded patch. If resize = False, then the resulting feature map will have size
-    (#channels, image_width//window_width, image_height//window_height), else the feature map will be rescaled to the
-    size of the input image.
-
-    References
-    ----------
-
+    """
     Visualizing and Understanding Convolutional Networks (Zeiler et al. 2014)
-
     """
 
     @staticmethod
@@ -59,7 +24,15 @@ class Occlusion(SaliencyMethod):
         return image.mean(dim=[1, 2, 3], keepdim=True).tile((1, *shape))
 
     def __init__(self, net: nn.Module, mgf=mean_mask.__func__, occlusion_size=(3, 8, 8), occlusion_window: torch.Tensor = None, resize: bool = False, **kwargs):
-
+        """
+        Initialize a new Occlusion Saliency Method object.
+        :param net: The neural network to use.
+        :param mgf: A function to generate masks for occlusion (will be used if occlusion_window is None)
+        :param occlusion_size: The size of the occlusion mask to generate (will be used if occlusion_window is None)
+        :param occlusion_window: The occlusion window to use.
+        :param resize: Whether to resize the resulting saliency map via nearest-neigbour interpolation.
+        :param kwargs: Other arguments.
+        """
         self.mgf = mgf
         self.occlusion_size = occlusion_size
         self.occlusion_window = occlusion_window
@@ -73,16 +46,16 @@ class Occlusion(SaliencyMethod):
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image(s) we want to explain.
+            A batch of images we want to generate saliency maps for.
 
-        labels : 1D-tensor of *batch* elements
-            The label we want to explain for.
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
 
         Returns
         -------
 
         4D-numpy.ndarray
-            A batch of saliency maps.
+            A batch of saliency maps for the images and labels provided.
 
         """
 

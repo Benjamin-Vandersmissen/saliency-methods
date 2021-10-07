@@ -10,17 +10,17 @@ __all__ = ["_CAM", "CAM", "GradCAM", "ScoreCAM", "GradCAMpp"]
 
 
 class _CAM(SaliencyMethod):
-    """ A base class for CAM based methods
-
-    Parameters
-    ----------
-    resize : bool
-        Whether to resize the map (True) or not (False).
-
-    normalise : bool
-        Whether to normalise the map (True) or not (False).
+    """
+    A base class for CAM based methods
     """
     def __init__(self, net: nn.Module, resize: bool = True, normalise: bool = True, **kwargs):
+        """
+        Initialize a CAM based saliency method object.
+        :param net: The neural network model to use.
+        :param resize: Whether to resize the resulting saliency map using bi-linear interpolation
+        :param normalise: Whether to normalize the map to the [0,1] range
+        :param kwargs: Other arguments.
+        """
         super().__init__(net, **kwargs)
         self.resize = resize
         self.normalised = normalise
@@ -45,13 +45,13 @@ class _CAM(SaliencyMethod):
         if self.activation_hook is None:
             self.activation_hook = self.conv_layer.register_forward_hook(_conv_hook)
 
-    def _get_weights(self, label: torch.Tensor) -> torch.Tensor:
+    def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
         """Get the weights used for the CAM calculations
 
         Parameters
         ----------
 
-        label : 1D-tensor that contains the labels
+        labels : 1D-tensor that contains the labels
             The labels for which we want to calculate the weights.
 
         Returns
@@ -112,25 +112,16 @@ class _CAM(SaliencyMethod):
 
 
 class CAM(_CAM):
-    """ Calculate the Class Activation Map of the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    resize : bool
-        Resize the map via bi-linear interpolation if True, otherwise don't resize.
-
-    References
-    ----------
-
-    Learning Deep Features for Discriminative Localization (Zhou et al. 2016)
-
+    """
+    Learning Deep Features for Discriminative Localization. (Zhou et al. 2016)
     """
 
     def __init__(self, net: nn.Module, **kwargs):
+        """
+        Initialize a CAM Saliency Method object.
+        :param net: The neural network to use.
+        :param kwargs: Other arguments.
+        """
         super().__init__(net, **kwargs)
         self.fc_layer: nn.Linear = None
 
@@ -190,25 +181,16 @@ class CAM(_CAM):
 
 
 class GradCAM(_CAM):
-    """ Calculate GradCAM for the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    resize : bool
-        Resize the map via bi-linear interpolation if True, otherwise don't resize.
-
-    References
-    ----------
-
+    """
     Grad-CAM: Visual explanations from deep networks via gradient-based localization (Selvaraju et al. 2017)
-
     """
 
     def __init__(self, net: nn.Module,  **kwargs):
+        """
+        Initialize a new Grad-CAM saliency method object.
+        :param net: The neural network to use.
+        :param kwargs: Other arguments.
+        """
         super().__init__(net, **kwargs)
         self.grad_hook = None
         self.grad = None
@@ -221,13 +203,13 @@ class GradCAM(_CAM):
         if self.grad_hook is None:
             self.grad_hook = self.conv_layer.register_backward_hook(_grad_hook)
 
-    def _get_weights(self, label: torch.Tensor) -> torch.Tensor:
+    def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
         """ Get the weights used for the CAM calculations
 
         Parameters
         ----------
 
-        label : 1D-tensor that contains the labels
+        labels : 1D-tensor that contains the labels
             The labels for which we want to calculate the weights.
 
         Returns
@@ -250,7 +232,7 @@ class GradCAM(_CAM):
             Input values to backpropagate.
 
         labels : 1D-tensor
-            Label to backpropagate for.
+            Labels to backpropagate for.
         """
 
         labels = labels.view((labels.shape[0], 1))
@@ -259,26 +241,23 @@ class GradCAM(_CAM):
         self.net.zero_grad()
         torch.gather(scores, 1, labels).sum(dim=1, keepdim=True).backward(torch.ones_like(labels))
 
-    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, resize: bool = True, **kwargs) -> np.ndarray:
-        """ Calculate Class Activation Mapping for the given input.
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the gradient-based Class Activation Mapping of the input w.r.t. the desired label.
 
         Parameters
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The images we want to explain.
+            A batch of images we want to generate saliency maps for.
 
-        label : 1D-tensor
-            The labels we want to explain for.
-
-        resize : boolean, default=True
-            Resize the saliency map using bi-linear interpolation.
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
 
         Returns
         -------
 
         4D-numpy.ndarray
-            A batch of saliency maps.
+            A batch of saliency maps for the images and labels provided.
 
         """
         in_values.to(self.device)
@@ -289,42 +268,33 @@ class GradCAM(_CAM):
             self._hook_conv_layer()
             self._hook_grad()
 
-        self._backprop(in_values, label)
+        self._backprop(in_values, labels)
 
-        return super().calculate_map(in_values, label, **kwargs)
+        return super().calculate_map(in_values, labels, **kwargs)
 
 
 class ScoreCAM(_CAM):
-    """ Calculate ScoreCAM for the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    resize : bool
-        Resize the map via bi-linear interpolation if True, otherwise don't resize.
-
-    References
-    ----------
-
+    """
     Score-CAM: Score-Weighted Visual Explanations for Convolutional Neural Networks (Wang et al. 2019)
-
     """
     def __init__(self, net, **kwargs):
+        """
+        Initialize a new ScoreCAM Saliency Method object.
+        :param net: The neural network model to use.
+        :param kwargs: Other arguments.
+        """
         super().__init__(net, **kwargs)
         self.in_values = None
-        self.label = None
+        self.labels = None
         self.base_score = None
 
-    def _get_weights(self, label: torch.Tensor) -> torch.Tensor:
+    def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
         """ Get the weights used for the CAM calculations
 
         Parameters
         ----------
 
-        label : 1D-tensor that contains the labels
+        labels : 1D-tensor that contains the labels
             The labels for which we want to calculate the weights.
 
         Returns
@@ -356,7 +326,7 @@ class ScoreCAM(_CAM):
 
             # Duplicate mask for each of the input image channels
             masks = masks.tile(1, in_channels, 1, 1)
-            scores[i] = self.net(masks * self.in_values[i].unsqueeze(0))[:, label[i]] - self.base_score[label[i]]
+            scores[i] = self.net(masks * self.in_values[i].unsqueeze(0))[:, labels[i]] - self.base_score[labels[i]]
 
         # Re-enable hook as we are finished with it.
         self._hook_conv_layer()
@@ -364,67 +334,56 @@ class ScoreCAM(_CAM):
         scores = F.softmax(scores, dim=0)
         return scores.reshape((batch_size, conv_channels, 1, 1))
 
-    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, resize: bool = True, **kwargs) -> np.ndarray:
-        """ Calculate Class Activation Mapping for the given input.
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the Score-based Class Activation Mapping of the input w.r.t. the desired label.
 
         Parameters
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The images we want to explain.
+            A batch of images we want to generate saliency maps for.
 
-        label : 1D-tensor
-            The labels we want to explain for.
-
-        resize : boolean, default=True
-            Resize the saliency map using bi-linear interpolation.
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
 
         Returns
         -------
 
         4D-numpy.ndarray
-            A batch of saliency maps.
+            A batch of saliency maps for the images and labels provided.
 
         """
         in_values.to(self.device)
 
         self.in_values = in_values
-        self.label = label
+        self.labels = labels
 
         baseline = torch.zeros((1, *self.in_values.shape[1:]))
         self.base_score = self.net(baseline).squeeze()
 
-        return super().calculate_map(in_values, label, **kwargs)
+        return super().calculate_map(in_values, labels, **kwargs)
 
 
 class GradCAMpp(GradCAM):
-    """ Calculate GradCAM++ for the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    resize : bool
-        Resize the map via bi-linear interpolation if True, otherwise don't resize.
-
-    References
-    ----------
-
+    """
     Grad-CAM++: Improved Visual Explanations for Deep Convolutional Networks (Chattopadhyay et al. 2017)
     """
 
     def __init__(self, net: nn.Module,  **kwargs):
+        """
+        Initialize a new GradCAM++ saliency method object.
+        :param net:
+        :param kwargs:
+        """
         super().__init__(net, **kwargs)
 
-    def _get_weights(self, label: torch.Tensor) -> torch.Tensor:
+    def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
         """ Get the weights used for the CAM calculations
 
         Parameters
         ----------
 
-        label : 1D-tensor that contains the labels
+        labels : 1D-tensor that contains the labels
             The labels for which we want to calculate the weights.
 
         Returns

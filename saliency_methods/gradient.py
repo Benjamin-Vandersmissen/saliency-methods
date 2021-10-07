@@ -10,22 +10,16 @@ __all__ = ['Gradient', 'GradientXInput', 'IntegratedGradient']
 
 
 class Gradient(SaliencyMethod):
-    """ Calculate the gradient of the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    References
-    ----------
-
+    """
     Deep inside convolutional networks: Visualising image classification models and saliency maps. (Simonyan et al. 2013)
-        https://arxiv.org/pdf/1312.6034.pdf
     """
 
     def __init__(self, net: nn.Module, **kwargs):
+        """
+        Initialize a Gradient Saliency Method object.
+        :param net: The neural network to use.
+        :param kwargs: Other parameters.
+        """
         super(Gradient, self).__init__(net, **kwargs)
 
     def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
@@ -35,16 +29,16 @@ class Gradient(SaliencyMethod):
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
+            A batch of images we want to generate saliency maps for.
 
-        labels : 1D-tensor
-            The labels we want to explain for.
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
 
         Returns
         -------
 
         4D-numpy.ndarray
-            A saliency map for the first image in the batch.
+            A batch of saliency maps for the images and labels provided.
 
         """
         batch_size = in_values.shape[0]
@@ -62,41 +56,35 @@ class Gradient(SaliencyMethod):
 
 
 class GradientXInput(Gradient):
-    """ Calculate the gradient times the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    References
-    ----------
-
+    """
     Learning Important Features Through Propagating Activation Differences (Shrikumar et al. 2017)
-        https://arxiv.org/pdf/1312.6034.pdf
     """
 
     def __init__(self, net: nn.Module, **kwargs):
+        """
+        Initialize a GradientxInput Saliency Method object.
+        :param net: The neural network to use.
+        :param kwargs: Other parameters.
+        """
         super(Gradient, self).__init__(net, **kwargs)
 
     def calculate_map(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
-        """ Calculates the Gradient of the input w.r.t. the desired label and multiply it with the input.
+        """ Calculates the Gradient of the input w.r.t. the desired label and multiply with the input.
 
         Parameters
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
+            A batch of images we want to generate saliency maps for.
 
-        labels : 1D-tensor
-            The label we want to explain for.
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
 
         Returns
         -------
 
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
+        4D-numpy.ndarray
+            A batch of saliency maps for the images and labels provided.
 
         """
         gradient = super().calculate_map(in_values, labels, **kwargs)
@@ -106,53 +94,28 @@ class GradientXInput(Gradient):
 
 
 class IntegratedGradient(Gradient):
-    """ Calculate the integrated gradient of the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    baseline : str or 4D-tensor of shape (batch, channel, width, height)
-        The baseline image to interpolate with the input. ("mean" = take the mean of the input image)
-
-    nr_steps :
-        How many steps of integrated gradients we use.
-
-    References
-    ----------
-
+    """
     Axiomatic Attribution for Deep Networks (Sundararajan et al. 2017)
-
     """
 
     def __init__(self, net: nn.Module,  baseline="mean", nr_steps=50, **kwargs):
+        """
+        Initialize a Integrated Gradient Saliency Method object.
+        :param net: The neural network to use.
+        :param baseline: Which type of baseline to use. (either
+        :param nr_steps: In how many steps do we integrate
+        :param kwargs: Other parameters.
+        """
         super().__init__(net, **kwargs)
         self.baseline = baseline
         self.nr_steps = nr_steps
 
-    def calculate_map(self, in_values: torch.Tensor, label: torch.Tensor, **kwargs):
-        """ Calculates the Integrated Gradient of the input w.r.t. the desired label.
-
-        Parameters
-        ----------
-
-        in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
-
-        label : 1D-tensor
-            The label we want to explain for.
-
-        Returns
-        -------
-
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
-
+    def get_baseline(self, in_values):
         """
-        in_values = in_values.to(self.device)
-
+        Generate a baseline image for the input values.
+        :param in_values: A batch of images.
+        :return: A batch of baselines, corresponding to the batch of images.
+        """
         baseline = self.baseline
         if baseline is None:
             baseline = torch.zeros_like(in_values, device=self.device)
@@ -161,11 +124,35 @@ class IntegratedGradient(Gradient):
         else:
             assert(isinstance(baseline, torch.Tensor))
             assert(baseline.shape == in_values.shape)
+
+        return baseline
+
+    def calculate_map(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs):
+        """ Calculates the Integrated Gradient of the input w.r.t. the desired label.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            A batch of images we want to generate saliency maps for.
+
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
+
+        Returns
+        -------
+
+        4D-numpy.ndarray
+            A batch of saliency maps for the images and labels provided.
+
+        """
+        in_values = in_values.to(self.device)
+        baseline = self.get_baseline(in_values)
         gradients = []
 
         for i in range(1, self.nr_steps + 1):
             current_input = baseline + (i / self.nr_steps) * (in_values - baseline)
-            gradients.append(super(IntegratedGradient, self).calculate_map(current_input, label, **kwargs))
+            gradients.append(super(IntegratedGradient, self).calculate_map(current_input, labels, **kwargs))
 
         in_values = in_values.detach().cpu().numpy()
         baseline = baseline.detach().cpu().numpy()
@@ -174,19 +161,14 @@ class IntegratedGradient(Gradient):
 
 
 class FullGradient(Gradient):
+    """
+    Full-Gradient Representation for Neural Network Visualization (Srinivas et al. 2019)
+    """
     def __init__(self, net: nn.Module, **kwargs):
-        """ Calculate the Full gradient saliency map of the input w.r.t. the desired label.
-
-        Parameters
-        ----------
-
-        net : torch.nn.module
-            The network used for generating a saliency map.
-
-        References
-        ----------
-
-        Full-Gradient Representation for Neural Network Visualization (Srinivas et al. 2019)
+        """
+        Initialize a FullGradient Saliency Method object.
+        :param net: The neural network to use.
+        :param kwargs: extra arguments.
         """
         super().__init__(net, **kwargs)
 
@@ -198,26 +180,58 @@ class FullGradient(Gradient):
             self.hooks.append(component.register_backward_hook(self._grad_bias_hook))
 
     def _grad_bias_hook(self, module, _, out_grad):
+        """
+        A hook that extracts biases and gradients from conv2d layers and stores them in seperate lists.
+        :param module: A nn module
+        :param _: /
+        :param out_grad: The backwards gradients.
+        :return: /
+        """
         if isinstance(module, nn.Conv2d) and module.bias is not None:
             self.conv_gradients.append(out_grad[0])
             self.conv_biases.append(module.bias.data)
 
     @staticmethod
-    def _postprocess(tensor, shape):
-        tensor = torch.abs(tensor)
+    def _postprocess(gradient, shape):
+        """
+        Post process a gradient by first taking the absolute value,
+        then normalising to the [0,1] range and finally upscaling via bilinear interpolation.
+        :param gradient: The gradient to post process
+        :param shape: The shape to resize to
+        :return: A postprocessed gradient.
+        """
+        gradient = torch.abs(gradient)
 
         # Normalize to [0,1]
-        tensor -= tensor.amin(dim=(2, 3), keepdim=True)
+        gradient -= gradient.amin(dim=(2, 3), keepdim=True)
         # Use small epsilon for numerical stability
-        denominator = tensor.amax(dim=(2, 3), keepdim=True)
+        denominator = gradient.amax(dim=(2, 3), keepdim=True)
         denominator[denominator == 0] = EPSILON
-        tensor /= denominator
+        gradient /= denominator
 
         # Resize to the correct size.
-        tensor = F.interpolate(tensor, shape[2:], mode='bilinear', align_corners=True)
-        return tensor
+        gradient = F.interpolate(gradient, shape[2:], mode='bilinear', align_corners=True)
+        return gradient
 
     def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the Full Gradient of the input w.r.t. the desired label.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            A batch of images we want to generate saliency maps for.
+
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
+
+        Returns
+        -------
+
+        4D-numpy.ndarray
+            A batch of saliency maps for the images and labels provided.
+
+        """
         device = in_values.device
         shape = in_values.shape
 

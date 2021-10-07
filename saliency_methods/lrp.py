@@ -12,27 +12,17 @@ __all__ = ['LRP']
 
 
 class LRP(SaliencyMethod):
-    """ Calculate GradCAM for the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    smoothed : bool
-        Whether to apply smoothing via SMOOTHGRAD (True) or not (False).
-
-    smooth_rate : int
-        How many iterations of SMOOTHGRAD to use.
-
-    References
-    ----------
-
+    """
     On Pixel-Wise Explanations for Non-Linear Classifier Decision by Layer-wise Relevance Propagation (Bach et al. 2015)
     """
 
     def __init__(self, net: nn.Module, rule: Rule = CompositeRule({0:ZbRule(), 1:LRP0()}), **kwargs):
+        """
+        Initialize a new LRP Saliency Method object.
+        :param net: The neural network to use.
+        :param rule: The rule(s) to apply during the propagation process.
+        :param kwargs: Other arguments.
+        """
         super().__init__(net, **kwargs)
 
         self.layers = None
@@ -78,22 +68,22 @@ class LRP(SaliencyMethod):
         self.layers = new_layers
 
     def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
-        """ Calculates the Layer-wise Relevance Propagation w.r.t. the desired label.
+        """ Calculates the Layer-wise Relevance Propagation of the input w.r.t. the desired label.
 
         Parameters
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The batch of images we want to explain.
+            A batch of images we want to generate saliency maps for.
 
-        labels : 1D-tensor of *batch* elements
-            The labels we want to explain for.
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
 
         Returns
         -------
 
         4D-numpy.ndarray
-            A saliency map for the first image in the batch.
+            A batch of saliency maps for the images and labels provided.
 
         """
         in_values.to(self.device)

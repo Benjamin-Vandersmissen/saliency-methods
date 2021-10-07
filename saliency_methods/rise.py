@@ -10,28 +10,21 @@ __all__ = ['Rise']
 
 
 class Rise(SaliencyMethod):
-    """ Calculate the saliency map of the input w.r.t. the desired label.
-
-    Parameters
-    ----------
-
-    net : torch.nn.module
-        The network used for generating a saliency map.
-
-    nr_masks : int
-        How many masks are used for the RISE algorithm (These are reused for each explanation.
-
-
-    References
-    ----------
-
+    """
     Rise : Randomized Input Sampling for Explanation (Petsiuk et al. 2018)
-
     """
 
-    def __init__(self, net: nn.Module, nr_masks=2500, sample_size=(7, 7), p=0.1, **kwargs):
+    def __init__(self, net: nn.Module, nr_masks=2500, mask_size=(7, 7), p=0.1, **kwargs):
+        """
+        Initialize a new RISE saliency method object.
+        :param net: The neural network to use.
+        :param nr_masks: The number of masks to use during saliency map generation.
+        :param mask_size: The size of the sampled masks.
+        :param p: The percentage of 1's in the bernoulli distributed masks.
+        :param kwargs: Other arguments.
+        """
         self.nr_masks = nr_masks
-        self.sample_size = sample_size
+        self.mask_size = mask_size
         self.p = p
         self.masks = None
         super().__init__(net, **kwargs)
@@ -46,7 +39,7 @@ class Rise(SaliencyMethod):
             The dimensions the mask needs to have.
         """
         # Generate mask of size (sample_width, sample_height) where each value is ~ Bernoulli(p)
-        sample_mask = torch.bernoulli(torch.full(self.sample_size, self.p))
+        sample_mask = torch.bernoulli(torch.full(self.mask_size, self.p))
 
         new_width = int((sample_mask.shape[0]+1)*np.ceil(image_size[0]/sample_mask.shape[0]))
         new_height = int((sample_mask.shape[1]+1)*np.ceil(image_size[1]/sample_mask.shape[1]))
@@ -65,22 +58,22 @@ class Rise(SaliencyMethod):
 
     def calculate_map(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
 
-        """ Calculates the Occlusion map of the input w.r.t. the desired label.
+        """ Calculates the Rise map of the input w.r.t. the desired label.
 
         Parameters
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain.
+            A batch of images we want to generate saliency maps for.
 
-        labels : 1D-tensor of *batch* elements
-            The labels we want to explain for.
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
 
         Returns
         -------
 
         4D-numpy.ndarray
-            Saliency maps for the batch.
+            A batch of saliency maps for the images and labels provided.
 
         """
         batch_size = in_values.shape[0]
