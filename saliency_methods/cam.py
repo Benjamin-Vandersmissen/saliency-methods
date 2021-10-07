@@ -349,7 +349,10 @@ class ScoreCAM(_CAM):
 
             # Normalize mask on a per channel base
             masks -= masks.amin(dim=[2, 3], keepdim=True)
-            masks /= torch.max(masks.amax(dim=[2, 3], keepdim=True), EPSILON)  # Use a small epsilon to avoid NaN
+            # Use small epsilon for numerical stability
+            denominator = torch.max(masks.amax(dim=(2, 3), keepdim=True))
+            denominator[denominator == 0] = EPSILON
+            masks /= denominator
 
             # Duplicate mask for each of the input image channels
             masks = masks.tile(1, in_channels, 1, 1)
