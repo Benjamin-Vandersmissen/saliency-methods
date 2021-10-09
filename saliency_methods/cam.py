@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from .base import SaliencyMethod
 from .utils import extract_layers, EPSILON
 
-__all__ = ["_CAM", "CAM", "GradCAM", "ScoreCAM", "GradCAMpp"]
+__all__ = ["_CAM", "CAM", "GradCAM", "ScoreCAM", "GradCAMpp", "AblationCAM"]
 
 
 class _CAM(SaliencyMethod):
@@ -400,3 +400,82 @@ class GradCAMpp(GradCAM):
         divisor[divisor == 0] = EPSILON  # epsilon to avoid numerical instability
         weights = ((grad_2 / divisor) * F.relu(self.conv_out)).sum(dim=[2, 3], keepdim=True)
         return weights
+
+
+class AblationCAM(_CAM):
+    """
+    Ablation-CAM: Visual Explanations for Deep Convolutional Network via Gradient-free Localization (Desai & Ramaswamy 2020)
+    """
+    def __init__(self, net, **kwargs):
+        """
+        Initialize a new AblationCAM Saliency Method object.
+        :param net: The neural network model to use.
+        :param kwargs: Other arguments.
+        """
+        super().__init__(net, **kwargs)
+        self.in_values = None
+        self.base_score = None
+        self.labels = None
+
+    def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
+        """ Get the weights used for the CAM calculations
+
+        Parameters
+        ----------
+
+        labels : 1D-tensor that contains the labels
+            The labels for which we want to calculate the weights.
+
+        Returns
+        -------
+
+        weights : 4D-tensor of shape (batch, channel, width, height)
+            The weights used in the linear combination of activation maps.
+
+        """
+        batch_size = self.in_values.shape[0]
+        channels = self.conv_out.shape[1]
+
+        current_weights = self.conv_layer.weight.clone()
+        scores = torch.zeros((channels, batch_size))
+
+        # Disable hook here, as we need to use the network to calculate the score
+        self.activation_hook.remove()
+        self.activation_hook = None
+
+        initial_score = torch.gather(self.net(self.in_values), 1, self.labels)
+
+        with torch.no_grad():
+            for i in range(channels):
+                self.conv_layer.weight[i] = 0
+                scores[i, :] = ((initial_score - torch.gather(self.net(self.in_values), 1, self.labels)) / (initial_score + EPSILON)).squeeze()
+                self.conv_layer.weight[i, :, :, :] = current_weights[i, : , :, :]
+
+        # Re-enable hook as we are finished with it.
+        self._hook_conv_layer()
+        return scores.reshape(batch_size, channels, 1, 1)
+
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the Score-based Class Activation Mapping of the input w.r.t. the desired label.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            A batch of images we want to generate saliency maps for.
+
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
+
+        Returns
+        -------
+
+        4D-numpy.ndarray
+            A batch of saliency maps for the images and labels provided.
+
+        """
+        in_values.to(self.device)
+        self.in_values = in_values
+        self.labels = labels.reshape((in_values.shape[0],1))
+
+        return super().calculate_map(in_values, labels, **kwargs)

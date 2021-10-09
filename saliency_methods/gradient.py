@@ -6,7 +6,7 @@ import numpy as np
 from .base import SaliencyMethod
 from .utils import EPSILON
 
-__all__ = ['Gradient', 'GradientXInput', 'IntegratedGradient']
+__all__ = ['Gradient', 'GradientXInput', 'IntegratedGradient', 'FullGradient']
 
 
 class Gradient(SaliencyMethod):
