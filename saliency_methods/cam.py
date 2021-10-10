@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from .base import SaliencyMethod
 from .utils import extract_layers, EPSILON
 
-__all__ = ["_CAM", "CAM", "GradCAM", "ScoreCAM", "GradCAMpp", "AblationCAM"]
+__all__ = ["_CAM", "CAM", "GradCAM", "ScoreCAM", "GradCAMpp", "AblationCAM", "XGradCAM"]
 
 
 class _CAM(SaliencyMethod):
@@ -479,3 +479,38 @@ class AblationCAM(_CAM):
         self.labels = labels.reshape((in_values.shape[0],1))
 
         return super().calculate_map(in_values, labels, **kwargs)
+
+
+class XGradCAM(GradCAM):
+    """
+    Axiom-based Grad-CAM: Towards Accurate Visualization and Explanation of CNNs (Fu et al. 2020)
+    """
+
+    def __init__(self, net: nn.Module,  **kwargs):
+        """
+        Initialize a new GradCAM++ saliency method object.
+        :param net:
+        :param kwargs:
+        """
+        super().__init__(net, **kwargs)
+
+    def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
+        """ Get the weights used for the CAM calculations
+
+        Parameters
+        ----------
+
+        labels : 1D-tensor that contains the labels
+            The labels for which we want to calculate the weights.
+
+        Returns
+        -------
+
+        weights : 4D-tensor of shape (batch, channel, width, height)
+            The weights used in the linear combination of activation maps.
+
+        """
+        denominator = self.conv_out.sum(dim=(2, 3), keepdim=True)
+        denominator[denominator == 0] = EPSILON
+        weights = (self.grad * self.conv_out/denominator).sum(dim=(2,3), keepdim=True)
+        return weights
