@@ -78,8 +78,8 @@ class _CAM(SaliencyMethod):
         Returns
         -------
 
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
+        4D-numpy.ndarray
+            A batch of saliency maps for the given images and labels.
 
         """
         in_values = in_values.to(self.device)
@@ -168,7 +168,7 @@ class CAM(_CAM):
         -------
 
         4D-numpy.ndarray
-            A saliency map for the first image in the batch.
+            A batch of saliency maps for the images and labels provided.
 
         """
         if self.layers is None:

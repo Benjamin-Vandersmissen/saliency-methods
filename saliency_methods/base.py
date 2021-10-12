@@ -53,8 +53,8 @@ class SaliencyMethod(ABC):
         return (saliency - saliency.min()) / (saliency.max() - saliency.min())
 
     @abstractmethod
-    def calculate_map(self, in_values: torch.tensor, label: torch.Tensor, **kwargs) -> np.ndarray:
-        """ Calculate a saliency map for the given input
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculate a saliency map for the given input.
 
         Parameters
         ----------
@@ -62,14 +62,14 @@ class SaliencyMethod(ABC):
         in_values : 4D-tensor of shape (batch, channel, width, height)
             The image we want to explain. Only the first in the batch is considered.
 
-        label : 1D-tensor
-            The label we want to explain for.
+        labels : 1D-tensor containing *batch* elements
+            The labels we want to explain for.
 
         Returns
         -------
 
-        3D-numpy.ndarray
-            A saliency map for the first image in the batch.
+        4D-numpy.ndarray
+            A batch of saliency maps for the images and labels provided.
 
         """
         raise NotImplementedError("A Subclass of SaliencyMethod needs to implement this function")
