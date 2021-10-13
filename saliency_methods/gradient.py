@@ -246,3 +246,53 @@ class FullGradient(Gradient):
 
         saliency = saliency.tile((1, shape[1], 1, 1))  # Convert to correct number of channels
         return saliency.detach().cpu().numpy()
+
+
+class GuidedBackProp(Gradient):
+    """
+    Striving for simplicity, the all convolutional net (Springenberg et al. 2014)
+    """
+    def __init__(self, net):
+        """
+        Initialize a GuidedBackProp Saliency Method object.
+        :param net: The neural network to use.
+        :param kwargs: extra arguments.
+        """
+        super(GuidedBackProp, self).__init__(net)
+        self.hooks = []
+
+    def hook_grad(self):
+        """
+        Add backward hooks to the ReLU modules, to clip their gradients to positive values.
+        :return: /
+        """
+        def hook(module, in_grad, out_grad):
+            return tuple(F.relu(out_grad[0]), )
+
+        for module in self.net.modules():
+            if isinstance(module, nn.ReLU):
+                self.hooks.append(module.register_backward_hook(hook))
+
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculates the Guided Backpropagation of the input w.r.t. the desired label.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            A batch of images we want to generate saliency maps for.
+
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
+
+        Returns
+        -------
+
+        4D-numpy.ndarray
+            A batch of saliency maps for the images and labels provided.
+
+        """
+        if len(self.hooks) == 0:
+            self.hook_grad()
+
+        return super(GuidedBackProp, self).calculate_map(in_values, labels, **kwargs)

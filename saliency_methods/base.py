@@ -73,3 +73,40 @@ class SaliencyMethod(ABC):
 
         """
         raise NotImplementedError("A Subclass of SaliencyMethod needs to implement this function")
+
+
+class CompositeSaliencyMethod(SaliencyMethod):
+
+    def __init__(self, method: SaliencyMethod):
+        """ Create a new CompositeSaliencyMethod object.
+
+        Parameters
+        ----------
+        method : SaliencyMethod
+            The method to composite.
+        """
+
+        super().__init__(method.net, method.device)
+        self.method = method
+
+    @abstractmethod
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Calculate a composite saliency map for the given input by combining multiple methods.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            The image we want to explain. Only the first in the batch is considered.
+
+        labels : 1D-tensor containing *batch* elements
+            The labels we want to explain for.
+
+        Returns
+        -------
+
+        4D-numpy.ndarray
+            A batch of saliency maps for the images and labels provided.
+
+        """
+        return self.method.calculate_map(in_values, labels, **kwargs)
