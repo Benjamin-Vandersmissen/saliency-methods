@@ -232,10 +232,10 @@ class FullGradient(Gradient):
             A batch of saliency maps for the images and labels provided.
 
         """
-        device = in_values.device
+        in_values.to(self.device)
         shape = in_values.shape
 
-        grad = torch.tensor(super().calculate_map(in_values, labels, **kwargs), device=device)
+        grad = torch.tensor(super().calculate_map(in_values, labels, **kwargs), device=self.device)
         saliency = self._postprocess(grad, shape) * in_values
         saliency = saliency.sum(dim=1, keepdim=True)
 
