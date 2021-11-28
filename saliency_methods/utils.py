@@ -29,11 +29,12 @@ def extract_layers(net: nn.Module, shape: tuple) -> list:
     dummy_value = torch.zeros(shape).to(device)
     layers, handles = [], []
 
-    func = lambda module, input, output: layers.append(module)
+    def func(name):
+        return lambda module, inp, outp: layers.append((name, module))
 
     for name, m in net.named_modules():
         if len(list(m.named_modules())) == 1:  # Only ever have the singular layers, no sub networks etc
-            handles.append(m.register_forward_hook(func))
+            handles.append(m.register_forward_hook(func(name)))
 
     net.forward(dummy_value)
     for handle in handles:

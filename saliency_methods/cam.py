@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
+import sys
 
 from .base import SaliencyMethod
 from .utils import extract_layers, EPSILON
@@ -13,12 +14,13 @@ class _CAM(SaliencyMethod):
     """
     A base class for CAM based methods
     """
-    def __init__(self, net: nn.Module, resize: bool = True, normalise: bool = True, **kwargs):
+    def __init__(self, net: nn.Module, resize: bool = True, normalise: bool = True, conv_layer_idx=-1, **kwargs):
         """
         Initialize a CAM based saliency method object.
         :param net: The neural network model to use.
         :param resize: Whether to resize the resulting saliency map using bi-linear interpolation
         :param normalise: Whether to normalize the map to the [0,1] range
+        :param conv_layer_idx: The convolutional layer to hook (either by index or name)
         :param kwargs: Other arguments.
         """
         super().__init__(net, **kwargs)
@@ -27,14 +29,28 @@ class _CAM(SaliencyMethod):
         self.conv_layer: nn.Conv2d = None
         self.activation_hook = None
         self.conv_out = None
-        self.layers = None
+        self.conv_layer_idx = conv_layer_idx
 
-    def _find_conv_layer(self):
-        """ Find the last convolutional layer for calculating the activation maps."""
-        for layer in self.layers[::-1]:
-            if isinstance(layer, nn.Conv2d):
-                self.conv_layer = layer
-                break
+    def _find_conv_layer(self, layers):
+        """ Find the given convolutional layer for calculating the activation maps."""
+
+        if isinstance(self.conv_layer_idx, str):
+            for name, layer in layers[::-1]:
+                if name == self.conv_layer_idx:
+                    if not isinstance(layer, nn.Conv2d):
+                        raise Exception("The provided layer %s should be a convolutional layer!" % self.conv_layer_idx)
+                    else:
+                        self.conv_layer = layer
+                        break
+            else:
+                raise Exception("No convolutional layer was found with name : " + self.conv_layer_idx)
+
+        else:
+            conv_layers = [layer for name, layer in layers if isinstance(layer, nn.Conv2d)]
+            if self.conv_layer_idx >= len(conv_layers) or -self.conv_layer_idx > len(conv_layers):
+                raise Exception("The provided index for the convolutional layers is out of bound (%s / %s)" %
+                                (self.conv_layer_idx, len(conv_layers)))
+            self.conv_layer = conv_layers[self.conv_layer_idx]
 
     def _hook_conv_layer(self):
         """Hook the last convolutional layer to find its output activations."""
@@ -86,9 +102,9 @@ class _CAM(SaliencyMethod):
         batch_size = in_values.shape[0]
         channels = in_values.shape[1]
 
-        if self.layers is None:
-            self.layers = extract_layers(self.net, in_values.shape)
-            self._find_conv_layer()
+        if self.activation_hook is None:
+            layers = extract_layers(self.net, in_values.shape)
+            self._find_conv_layer(layers)
             self._hook_conv_layer()
 
         _ = self.net(in_values)  # so we can find the hooked value
@@ -123,11 +139,15 @@ class CAM(_CAM):
         :param kwargs: Other arguments.
         """
         super().__init__(net, **kwargs)
+        if self.conv_layer_idx != -1:
+            print("CAM only works with the last convolutional layer.", file=sys.stderr)
+            print("Automatically switching to the last convolutional layer.", file=sys.stderr)
+            self.conv_layer_idx = -1
         self.fc_layer: nn.Linear = None
 
-    def _find_fc_layer(self):
+    def _find_fc_layer(self, layers):
         """ Find the linear layer for calculating the activation maps."""
-        for layer in self.layers[::-1]:
+        for name, layer in layers[::-1]:
             if isinstance(layer, nn.Linear):
                 self.fc_layer = layer
                 break
@@ -171,11 +191,11 @@ class CAM(_CAM):
             A batch of saliency maps for the images and labels provided.
 
         """
-        if self.layers is None:
-            self.layers = extract_layers(self.net, in_values.shape)
-            self._find_conv_layer()
+        if self.fc_layer is None:
+            layers = extract_layers(self.net, in_values.shape)
+            self._find_conv_layer(layers)
             self._hook_conv_layer()
-            self._find_fc_layer()
+            self._find_fc_layer(layers)
 
         return super().calculate_map(in_values, labels, **kwargs)
 
@@ -196,7 +216,7 @@ class GradCAM(_CAM):
         self.grad = None
 
     def _hook_grad(self):
-        """Hook the last convolutional layer to find its gradients."""
+        """Hook the given convolutional layer to find its gradients."""
 
         def _grad_hook(_, __, outp):
             self.grad = outp[0]
@@ -262,9 +282,9 @@ class GradCAM(_CAM):
         """
         in_values.to(self.device)
 
-        if self.layers is None:
-            self.layers = extract_layers(self.net, in_values.shape)
-            self._find_conv_layer()
+        if self.conv_layer is None:
+            layers = extract_layers(self.net, in_values.shape)
+            self._find_conv_layer(layers)
             self._hook_conv_layer()
             self._hook_grad()
 
