@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch.nn.functional import softmax
 from .utils import importance
-
+from .mask import BlurredMask, MeanMask
 import matplotlib.pyplot as plt
 
 
@@ -145,12 +145,13 @@ def insertion(saliency, net, images, labels, nr_steps=100, batch_size=-1):
     step = math.ceil(saliency[0, 0].size / nr_steps)
 
     insertion_scores = np.ndarray((data_size, nr_steps + 1))
+    blur = BlurredMask()
 
     with torch.no_grad():
         for i in range(math.ceil(data_size/batch_size)):
             batch_index = batch_size*i
             batch_images = images[batch_index:batch_index+batch_size]
-            batch_blurred_images = torch.zeros_like(batch_images)  # TODO: also allow blurred images
+            batch_blurred_images = blur.mask(batch_images)
             batch_labels = labels[batch_index:batch_index+batch_size]
             for j in range(nr_steps+1):
                 scores = torch.gather(softmax(net(batch_blurred_images), 1), 1, batch_labels).squeeze()

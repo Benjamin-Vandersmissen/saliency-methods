@@ -5,8 +5,8 @@ import numpy as np
 
 from .base import SaliencyMethod
 from .utils import EPSILON
-
-__all__ = ['Gradient', 'GradientXInput', 'IntegratedGradient', 'FullGradient']
+from .mask import Mask, MeanMask
+__all__ = ['Gradient', 'GradientXInput', 'IntegratedGradient', 'FullGradient', 'GuidedBackProp']
 
 
 class Gradient(SaliencyMethod):
@@ -98,11 +98,11 @@ class IntegratedGradient(Gradient):
     Axiomatic Attribution for Deep Networks (Sundararajan et al. 2017)
     """
 
-    def __init__(self, net: nn.Module,  baseline="mean", nr_steps=50, **kwargs):
+    def __init__(self, net: nn.Module,  baseline: Mask = MeanMask(), nr_steps=50, **kwargs):
         """
         Initialize a Integrated Gradient Saliency Method object.
         :param net: The neural network to use.
-        :param baseline: Which type of baseline to use. (either
+        :param baseline: Which type of baseline to use.
         :param nr_steps: In how many steps do we integrate
         :param kwargs: Other parameters.
         """
@@ -116,14 +116,7 @@ class IntegratedGradient(Gradient):
         :param in_values: A batch of images.
         :return: A batch of baselines, corresponding to the batch of images.
         """
-        baseline = self.baseline
-        if baseline is None:
-            baseline = torch.zeros_like(in_values, device=self.device)
-        elif baseline == "mean":
-            baseline = torch.ones_like(in_values, device=self.device) * in_values.mean()
-        else:
-            assert(isinstance(baseline, torch.Tensor))
-            assert(baseline.shape == in_values.shape)
+        baseline = self.baseline.mask(in_values, in_values.shape)
 
         return baseline
 
