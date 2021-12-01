@@ -1,8 +1,6 @@
 import numpy as np
 import torch
-from torch import nn
-from collections.abc import Callable
-from copy import deepcopy
+import torch.nn.functional as F
 
 from .base import SaliencyMethod
 from .utils import extract_layers
@@ -10,6 +8,8 @@ from .rule import *
 
 __all__ = ['LRP']
 
+# TODO: convert LRP to use a backward_hook mechanism, by implementing each rule as a backward hook and calling
+# .backward() on the out value
 
 class LRP(SaliencyMethod):
     """
@@ -41,7 +41,7 @@ class LRP(SaliencyMethod):
         dummy_value = torch.zeros(shape).to(self.device)
 
         new_layers = []
-        for layer in self.layers:
+        for _, layer in self.layers:
 
             if isinstance(layer, nn.Linear):  # convert linear layers to corresponding convolutional layers
                 new_layer = None
@@ -99,3 +99,16 @@ class LRP(SaliencyMethod):
 
         return self.rule(self.layers, activations, labels)
 
+
+class MarginalWinningProbability(SaliencyMethod):
+    def __init__(self, net : nn.Module, **kwargs):
+        super(MarginalWinningProbability, self).__init__(net)
+
+        self.activations = []
+        self.maps = []
+
+        self.forward_hooks = []
+        self.backward_hooks = []
+
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        pass
