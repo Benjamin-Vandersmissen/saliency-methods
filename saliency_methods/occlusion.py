@@ -16,7 +16,7 @@ class Occlusion(SaliencyMethod):
     Visualizing and Understanding Convolutional Networks (Zeiler et al. 2014)
     """
 
-    def __init__(self, net: nn.Module, mgf: Mask = MeanMask, occlusion_size=(3, 8, 8), occlusion_window: torch.Tensor = None, resize: bool = False, **kwargs):
+    def __init__(self, net: nn.Module, mgf: Mask = MeanMask(), occlusion_size=(3, 8, 8), occlusion_window: torch.Tensor = None, resize: bool = False, **kwargs):
         """
         Initialize a new Occlusion Saliency Method object.
         :param net: The neural network to use.
@@ -58,7 +58,7 @@ class Occlusion(SaliencyMethod):
 
         occlusion_window = self.occlusion_window
         if occlusion_window is None:
-            occlusion_window = self.mgf.mask(in_values, self.occlusion_size)
+            occlusion_window = self.mgf.mask(in_values, (batch_size, *self.occlusion_size))
 
         in_shape = in_values.shape[2:]  # Don't count batch & channels
         occlusion_shape = occlusion_window.shape[2:]
