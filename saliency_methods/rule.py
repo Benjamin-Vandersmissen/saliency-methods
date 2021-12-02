@@ -5,6 +5,7 @@ from typing import Any
 from torch import nn
 from collections.abc import Callable
 from copy import deepcopy
+from functools import partial
 
 from .utils import EPSILON
 
@@ -15,40 +16,92 @@ import torch
 # During the new forward pass, we call the original forward pass
 
 
-def lrp_zero(inp, relevance, module):
-    inp.requires_grad_(True)
-    if inp.grad is not None:
-        inp.grad = 0
-    with torch.enable_grad():
-        Z = module.forward_orig(inp)
-        Z = Z + (Z == 0) * EPSILON
-        S = (relevance / Z).data
-        (Z * S).sum().backward()
-        c = inp.grad
-        return (inp * c).data
+def zb_rule(inp, relevance, module, mean = None, std = None):
+    if mean is None:
+        mean = torch.zeros_like(inp)
+    if std is None:
+        std = torch.ones_like(inp)
 
-def lrp_epsilon(inp, relevance, module):
-    inp.requires_grad_(True)
-    if inp.grad is not None:
-        inp.grad = 0
-    rho = lambda z: z
-    module = Rule._modify_layer(module, rho)
-    incr = lambda z: z + 0.25 * ((z ** 2).mean() ** .5).data
-    with torch.enable_grad():
-        Z = incr(module.forward_orig(inp))
-        Z = Z + (Z == 0) * EPSILON
-        S = (relevance / Z).data
-        (Z * S).sum().backward()
-        c = inp.grad
-        return (inp * c).data
+    lb = (inp.data * 0 + (0-mean)/std).requires_grad_(True)  # lower bound on the activation
+    ub = (inp.data * 0 + (1-mean)/std).requires_grad_(True)  # upper bound on the activation
+
+    z = module.forward(inp)
+    z -= Rule._modify_layer(module, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+
+    z -= Rule._modify_layer(module, lambda p: p.clamp(max=0)).forward(ub)  # - ub * w-
+
+    z = z + z[z==0] * EPSILON  # for numerical stability
+
+    s = (relevance / z).data  # step 2
+    (z * s).sum().backward()  # step 3
+    c, cp, cm = inp.grad, lb.grad, ub.grad
+    return inp * c + lb * cp + ub * cm  # step 4
 
 
-class DummyLayer(object):
-    def forward(self, input, relevance_func=lrp_zero):
-        return LRPRule.apply(self, input, relevance_func)
+class LRPRule(object):
+
+    @staticmethod
+    def relevance_func(inp, relevance, module):
+        return inp
+
+    def forward(self, input, relevance_func=relevance_func.__func__):
+        return LRP_func.apply(self, input, relevance_func)
 
 
-class LRPRule(torch.autograd.Function):
+class LRPZeroRule(LRPRule):
+
+    @staticmethod
+    def relevance_func(inp, relevance, module, incr=lambda z: z, rho=lambda p: p):
+        inp.requires_grad_(True)
+        if inp.grad is not None:
+            inp.grad = 0
+        module = Rule._modify_layer(module, rho)
+        with torch.enable_grad():
+            Z = incr(module.forward_orig(inp))
+            Z = Z + (Z == 0) * EPSILON
+            S = (relevance / Z).data
+            (Z * S).sum().backward()
+            c = inp.grad
+            return (inp * c).data
+
+    def forward(self, input):
+        return LRPRule.forward(self, input, LRPZeroRule.relevance_func)
+
+
+class LRPEpsilonRule(LRPZeroRule):
+    def forward(self, input):
+        incr = lambda z: z + 0.25 * ((z ** 2).mean() ** .5).data
+        return LRPRule.forward(self, input, partial(LRPZeroRule.relevance_func, incr=incr))
+
+
+class LRPZbRule(LRPRule):
+
+    @staticmethod
+    def relevance_func(inp, relevance, module, lower=-torch.ones((1,3,1,1)), upper=torch.ones((1, 3, 1, 1))):
+        with torch.enable_grad():
+            inp.requires_grad_(True)
+
+            lb = (inp * 0 + lower).requires_grad_(True)  # lower bound on the activation
+            ub = (inp * 0 + upper).requires_grad_(True)  # upper bound on the activation
+
+            lb.retain_grad()
+            ub.retain_grad()
+
+            z = module.forward_orig(inp)
+            z -= Rule._modify_layer(module, lambda p: p.clamp(min=0)).forward_orig(lb)  # - lb * w+
+            z -= Rule._modify_layer(module, lambda p: p.clamp(max=0)).forward_orig(ub)  # - ub * w-
+
+            z = z + (z == 0) * EPSILON  # for numerical stability
+
+            s = (relevance / z).data  # step 2
+            (z * s).sum().backward()  # step 3
+            c, cp, cm = inp.grad, lb.grad, ub.grad
+            return inp * c + lb * cp + ub * cm  # step 4
+
+    def forward(self, input):
+        return LRPRule.forward(self, input, partial(LRPZbRule.relevance_func))
+
+
+class LRP_func(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx: Any, module, inp, relevance_func) -> Any:
@@ -160,7 +213,7 @@ class LRPgamma(LRP0):
 
 
 class ZbRule(Rule):
-    def __init__(self, mean=torch.zeros((1, 1, 1)), std=torch.ones((1, 1, 1))):
+    def __init__(self, mean=torch.zeros((1, 3, 1, 1)), std=torch.ones((1, 3, 1, 1))):
         super().__init__()
         self.mean = mean
         self.std = std
@@ -170,8 +223,8 @@ class ZbRule(Rule):
         self.mean = self.mean.to(device)
         self.std = self.std.to(device)
 
-        lb = (activation.data * 0 + (0-self.mean)/self.std).requires_grad_(True)  # lower bound on the activation
-        ub = (activation.data * 0 + (1-self.mean)/self.std).requires_grad_(True)  # upper bound on the activation
+        lb = (activation.data * 0 - self.std).requires_grad_(True)  # lower bound on the activation
+        ub = (activation.data * 0 + self.std).requires_grad_(True)  # upper bound on the activation
 
         z = layer.forward(activation)
         z -= self._modify_layer(layer, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+

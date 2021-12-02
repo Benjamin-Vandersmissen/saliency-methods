@@ -20,11 +20,16 @@ class LRPBackward(SaliencyMethod):
     def __init__(self, net: nn.Module, **kwargs):
         super().__init__(net, **kwargs)
 
+        first_layer = True
         for module in self.net.modules():
             if len(list(module.modules())) == 1:
                 if not isinstance(module, nn.ReLU):
                     setattr(module, 'forward_orig', module.forward)
-                    setattr(module, 'forward', types.MethodType(getattr(DummyLayer, 'forward'), module))
+                    if first_layer:
+                        setattr(module, 'forward', types.MethodType(getattr(LRPZbRule, 'forward'), module))
+                        first_layer = False
+                    else:
+                        setattr(module, 'forward', types.MethodType(getattr(LRPZeroRule, 'forward'), module))
 
     def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         in_values.to(self.device).requires_grad_(True)
