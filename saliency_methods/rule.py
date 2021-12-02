@@ -1,4 +1,7 @@
+import copy
 from abc import ABC, abstractmethod
+from typing import Any
+
 from torch import nn
 from collections.abc import Callable
 from copy import deepcopy
@@ -6,6 +9,58 @@ from copy import deepcopy
 from .utils import EPSILON
 
 import torch
+
+# First for each module in the network that is supported (make list of supported modules) and check with in keyword:
+# Rename the forward function to forward_orig and add the overridden forward module from LRPRule
+# During the new forward pass, we call the original forward pass
+
+
+def lrp_zero(inp, relevance, module):
+    inp.requires_grad_(True)
+    if inp.grad is not None:
+        inp.grad = 0
+    with torch.enable_grad():
+        Z = module.forward_orig(inp)
+        Z = Z + (Z == 0) * EPSILON
+        S = (relevance / Z).data
+        (Z * S).sum().backward()
+        c = inp.grad
+        return (inp * c).data
+
+def lrp_epsilon(inp, relevance, module):
+    inp.requires_grad_(True)
+    if inp.grad is not None:
+        inp.grad = 0
+    rho = lambda z: z
+    module = Rule._modify_layer(module, rho)
+    incr = lambda z: z + 0.25 * ((z ** 2).mean() ** .5).data
+    with torch.enable_grad():
+        Z = incr(module.forward_orig(inp))
+        Z = Z + (Z == 0) * EPSILON
+        S = (relevance / Z).data
+        (Z * S).sum().backward()
+        c = inp.grad
+        return (inp * c).data
+
+
+class DummyLayer(object):
+    def forward(self, input, relevance_func=lrp_zero):
+        return LRPRule.apply(self, input, relevance_func)
+
+
+class LRPRule(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx: Any, module, inp, relevance_func) -> Any:
+        ctx.relevance_func = relevance_func
+        ctx.inp = inp.data
+        ctx.module = copy.deepcopy(module)
+        return module.forward_orig(inp)
+
+    @staticmethod
+    def backward(ctx: Any, relevance) -> Any:
+        new_relevance = ctx.relevance_func(ctx.inp, relevance, ctx.module)
+        return None, new_relevance, None
 
 
 class Rule(ABC):
@@ -66,7 +121,8 @@ class Rule(ABC):
             pass
 
         try:
-            new_layer.bias = nn.Parameter(func(layer.bias))
+            if layer.bias is not None:
+                new_layer.bias = nn.Parameter(func(layer.bias))
         except AttributeError:
             pass
 

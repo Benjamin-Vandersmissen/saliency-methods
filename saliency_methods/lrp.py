@@ -1,3 +1,6 @@
+import copy
+import types
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -8,8 +11,28 @@ from .rule import *
 
 __all__ = ['LRP']
 
-# TODO: convert LRP to use a backward_hook mechanism, by implementing each rule as a backward hook and calling
-# .backward() on the out value
+# TODO: https://pytorch.org/tutorials/beginner/examples_autograd/two_layer_net_custom_function.html
+# TODO: https://github.com/dmitrysarov/LRP_decomposition/tree/72031a5252aafb7f7e51abe28bba40dba0fce9e7
+# Implement rules as custom autograd functions, with forward and backward.
+
+
+class LRPBackward(SaliencyMethod):
+    def __init__(self, net: nn.Module, **kwargs):
+        super().__init__(net, **kwargs)
+
+        for module in self.net.modules():
+            if len(list(module.modules())) == 1:
+                if not isinstance(module, nn.ReLU):
+                    setattr(module, 'forward_orig', module.forward)
+                    setattr(module, 'forward', types.MethodType(getattr(DummyLayer, 'forward'), module))
+
+    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        in_values.to(self.device).requires_grad_(True)
+        labels = labels.reshape(labels.shape[0], 1)
+        out_values = torch.gather(self.net(in_values), 1, labels)  # select relevant score
+        out_values.backward(gradient=torch.ones_like(out_values))
+        return in_values.grad.detach().numpy()
+
 
 class LRP(SaliencyMethod):
     """
