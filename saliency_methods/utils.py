@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-EPSILON = 1e-12
+EPSILON = np.finfo(np.float32).eps
 
 
 def extract_layers(net: nn.Module, shape: tuple) -> list:

@@ -23,13 +23,16 @@ class LRPBackward(SaliencyMethod):
         first_layer = True
         for module in self.net.modules():
             if len(list(module.modules())) == 1:
-                if not isinstance(module, nn.ReLU):
-                    setattr(module, 'forward_orig', module.forward)
+                setattr(module, 'forward_orig', module.forward)
+                if not isinstance(module, nn.ReLU) or isinstance(module, nn.BatchNorm2d):
                     if first_layer:
                         setattr(module, 'forward', types.MethodType(getattr(LRPZbRule, 'forward'), module))
                         first_layer = False
                     else:
-                        setattr(module, 'forward', types.MethodType(getattr(LRPZeroRule, 'forward'), module))
+                        setattr(module, 'forward', types.MethodType(getattr(LRPAlphaBetaRule, 'forward'), module))
+
+                else:
+                    setattr(module, 'forward', types.MethodType(getattr(LRPIdentityRule, 'forward'), module))
 
     def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         in_values.to(self.device).requires_grad_(True)
@@ -44,7 +47,7 @@ class LRP(SaliencyMethod):
     On Pixel-Wise Explanations for Non-Linear Classifier Decision by Layer-wise Relevance Propagation (Bach et al. 2015)
     """
 
-    def __init__(self, net: nn.Module, rule: Rule = CompositeRule({0:ZbRule(), 1:LRP0()}), **kwargs):
+    def __init__(self, net: nn.Module, rule: Rule = CompositeRule({0:ZbRule(), 1:LRPeps()}), **kwargs):
         """
         Initialize a new LRP Saliency Method object.
         :param net: The neural network to use.

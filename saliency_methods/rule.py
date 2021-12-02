@@ -16,27 +16,6 @@ import torch
 # During the new forward pass, we call the original forward pass
 
 
-def zb_rule(inp, relevance, module, mean = None, std = None):
-    if mean is None:
-        mean = torch.zeros_like(inp)
-    if std is None:
-        std = torch.ones_like(inp)
-
-    lb = (inp.data * 0 + (0-mean)/std).requires_grad_(True)  # lower bound on the activation
-    ub = (inp.data * 0 + (1-mean)/std).requires_grad_(True)  # upper bound on the activation
-
-    z = module.forward(inp)
-    z -= Rule._modify_layer(module, lambda p: p.clamp(min=0)).forward(lb)  # - lb * w+
-    z -= Rule._modify_layer(module, lambda p: p.clamp(max=0)).forward(ub)  # - ub * w-
-
-    z = z + z[z==0] * EPSILON  # for numerical stability
-
-    s = (relevance / z).data  # step 2
-    (z * s).sum().backward()  # step 3
-    c, cp, cm = inp.grad, lb.grad, ub.grad
-    return inp * c + lb * cp + ub * cm  # step 4
-
-
 class LRPRule(object):
 
     @staticmethod
@@ -47,24 +26,74 @@ class LRPRule(object):
         return LRP_func.apply(self, input, relevance_func)
 
 
+class LRPIdentityRule(LRPRule):
+
+    @staticmethod
+    def relevance_func(inp, relevance, module):
+        return relevance
+
+    def forward(self, input):
+        return LRPRule.forward(self, input, LRPIdentityRule.relevance_func)
+
+
 class LRPZeroRule(LRPRule):
 
     @staticmethod
     def relevance_func(inp, relevance, module, incr=lambda z: z, rho=lambda p: p):
         inp.requires_grad_(True)
         if inp.grad is not None:
-            inp.grad = 0
+            inp.grad.zero_()
         module = Rule._modify_layer(module, rho)
         with torch.enable_grad():
             Z = incr(module.forward_orig(inp))
             Z = Z + (Z == 0) * EPSILON
             S = (relevance / Z).data
-            (Z * S).sum().backward()
-            c = inp.grad
-            return (inp * c).data
+            c = torch.autograd.grad(Z, inp, S)[0]
+            new_relevance = (inp * c).data
+            print(module, new_relevance.sum())
+            return new_relevance.data
 
     def forward(self, input):
         return LRPRule.forward(self, input, LRPZeroRule.relevance_func)
+
+
+class LRPAlphaBetaRule(LRPRule):
+    @staticmethod
+    def relevance_func(inp, relevance, module, alpha=1, beta=0):
+        with torch.enable_grad():
+            pos_inp = torch.clip(inp, min=0).requires_grad_()
+            neg_inp = torch.clip(inp, max=0).requires_grad_()
+
+            pos_incr = lambda z: torch.clamp(z, min=0)
+            neg_incr = lambda z: torch.clamp(z, max=0)
+
+            pos_model = Rule._modify_layer(module, pos_incr)
+            pos_model.bias = None
+            neg_model = Rule._modify_layer(module, neg_incr)
+            neg_model.bias = None
+
+            zpos_pos = pos_model.forward_orig(pos_inp)
+            zpos_neg = pos_model.forward_orig(neg_inp)
+            zneg_neg = neg_model.forward_orig(neg_inp)
+            zneg_pos = neg_model.forward_orig(pos_inp)
+
+            Spos_pos = relevance / (zpos_pos + EPSILON)
+            Spos_neg = relevance / (zpos_neg + EPSILON)
+            Sneg_pos = relevance / (zneg_pos + EPSILON)
+            Sneg_neg = relevance / (zneg_neg + EPSILON)
+
+            Cpos_pos = pos_inp * torch.autograd.grad(zpos_pos, pos_inp, Spos_pos)[0]
+            Cpos_neg = neg_inp * torch.autograd.grad(zpos_neg, neg_inp, Spos_neg)[0]
+            Cneg_pos = pos_inp * torch.autograd.grad(zneg_pos, pos_inp, Sneg_pos)[0]
+            Cneg_neg = neg_inp * torch.autograd.grad(zneg_neg, neg_inp, Sneg_neg)[0]
+
+            activator_relevance = Cpos_pos + Cneg_neg
+            inhibitor_relevance = Cneg_pos + Cpos_neg
+
+            return alpha * activator_relevance + beta * inhibitor_relevance
+
+    def forward(self, input):
+        return LRPRule.forward(self, input, LRPAlphaBetaRule.relevance_func)
 
 
 class LRPEpsilonRule(LRPZeroRule):
@@ -97,8 +126,28 @@ class LRPZbRule(LRPRule):
             c, cp, cm = inp.grad, lb.grad, ub.grad
             return inp * c + lb * cp + ub * cm  # step 4
 
-    def forward(self, input):
-        return LRPRule.forward(self, input, partial(LRPZbRule.relevance_func))
+    def forward(self, input, lower=-torch.ones((1,3,1,1)), upper=torch.ones((1,3,1,1))):
+        return LRPRule.forward(self, input, partial(LRPZbRule.relevance_func, lower=lower, upper=upper))
+
+
+class LRPgammaRule(LRPZeroRule):
+    def forward(self, input, gamma=0.25):
+        rho = lambda p: p + gamma * p.clamp(min=0)
+        return LRPRule.forward(self,input, partial(LRPZeroRule.relevance_func, rho=rho))
+
+# class LRPbatchnormRule(LRPRule):
+#
+#     @staticmethod
+#     def relevance_func(inp, relevance, module):
+#         outp = module(inp)
+#         bias = module.bias.view((1, -1, 1, 1))
+#         running_mean = module.running_mean.view((1, -1, 1, 1))
+#         new_relevance = inp*(outp - bias)*relevance/((inp - running_mean)*outp + EPSILON)
+#         print(module, relevance.sum().item())
+#         return new_relevance
+#
+#     def forward(self, input):
+#         return LRPRule.forward(self, input, LRPbatchnormRule.relevance_func)
 
 
 class LRP_func(torch.autograd.Function):
@@ -173,11 +222,11 @@ class Rule(ABC):
         except AttributeError:
             pass
 
-        try:
-            if layer.bias is not None:
-                new_layer.bias = nn.Parameter(func(layer.bias))
-        except AttributeError:
-            pass
+        # try:
+        #     if layer.bias is not None:
+        #         new_layer.bias = nn.Parameter(func(layer.bias))
+        # except AttributeError:
+        #     pass
 
         return new_layer
 
