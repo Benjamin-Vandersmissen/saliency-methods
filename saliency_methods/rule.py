@@ -50,7 +50,6 @@ class LRPZeroRule(LRPRule):
             S = (relevance / Z).data
             c = torch.autograd.grad(Z, inp, S)[0]
             new_relevance = (inp * c).data
-            print(module, new_relevance.sum())
             return new_relevance.data
 
     def forward(self, input):
@@ -61,8 +60,8 @@ class LRPAlphaBetaRule(LRPRule):
     @staticmethod
     def relevance_func(inp, relevance, module, alpha=1, beta=0):
         with torch.enable_grad():
-            pos_inp = torch.clip(inp, min=0).requires_grad_()
-            neg_inp = torch.clip(inp, max=0).requires_grad_()
+            pos_inp = torch.clip(inp, min=0).requires_grad_(True)
+            neg_inp = torch.clip(inp, max=0).requires_grad_(True)
 
             pos_incr = lambda z: torch.clamp(z, min=0)
             neg_incr = lambda z: torch.clamp(z, max=0)

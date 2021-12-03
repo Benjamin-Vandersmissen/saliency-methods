@@ -24,12 +24,15 @@ class LRPBackward(SaliencyMethod):
         for module in self.net.modules():
             if len(list(module.modules())) == 1:
                 setattr(module, 'forward_orig', module.forward)
-                if not isinstance(module, nn.ReLU) or isinstance(module, nn.BatchNorm2d):
+                if not (isinstance(module, nn.ReLU) or isinstance(module, nn.BatchNorm2d)):
                     if first_layer:
                         setattr(module, 'forward', types.MethodType(getattr(LRPZbRule, 'forward'), module))
                         first_layer = False
                     else:
-                        setattr(module, 'forward', types.MethodType(getattr(LRPAlphaBetaRule, 'forward'), module))
+                        if isinstance(module, nn.AdaptiveAvgPool2d):
+                            setattr(module, 'forward', types.MethodType(getattr(LRPZeroRule, 'forward'), module))
+                        else:
+                            setattr(module, 'forward', types.MethodType(getattr(LRPAlphaBetaRule, 'forward'), module))
 
                 else:
                     setattr(module, 'forward', types.MethodType(getattr(LRPIdentityRule, 'forward'), module))
@@ -37,9 +40,11 @@ class LRPBackward(SaliencyMethod):
     def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         in_values.to(self.device).requires_grad_(True)
         labels = labels.reshape(labels.shape[0], 1)
-        out_values = torch.gather(self.net(in_values), 1, labels)  # select relevant score
-        out_values.backward(gradient=torch.ones_like(out_values))
-        return in_values.grad.detach().numpy()
+        out_values = self.net(in_values)
+        # All 0's except the original values on the positions of the label.
+        grad_out = torch.scatter(torch.zeros_like(out_values), 1, labels, torch.gather(out_values, 1, labels))
+        grad = torch.autograd.grad(out_values, in_values, grad_out)[0]
+        return grad.detach().numpy()
 
 
 class LRP(SaliencyMethod):
