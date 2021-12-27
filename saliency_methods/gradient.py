@@ -256,15 +256,26 @@ class GuidedBackProp(Gradient):
 
     def hook_grad(self):
         """
-        Add backward hooks to the ReLU modules, to clip their gradients to positive values.
+        Add forward and backward hooks to the ReLU modules, to clip their gradients to positive values.
         :return: /
         """
-        def hook(module, in_grad, out_grad):
-            return tuple(F.relu(out_grad[0]), )
+        def back_hook(module, in_grad, out_grad):
+            outp = module.outp.pop()
+            if len(module.outp) == 0:
+                del module.outp
+            out = F.relu((outp != 0) * out_grad[0])
+            return out,
+
+        def forward_hook(module, inp, outp):
+            if hasattr(module, 'outp'):
+                module.outp.append(outp)
+            else:
+                module.outp = [outp]
 
         for module in self.net.modules():
             if isinstance(module, nn.ReLU):
-                self.hooks.append(module.register_backward_hook(hook))
+                self.hooks.append(module.register_backward_hook(back_hook))
+                self.hooks.append(module.register_forward_hook(forward_hook))
 
     def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Guided Backpropagation of the input w.r.t. the desired label.

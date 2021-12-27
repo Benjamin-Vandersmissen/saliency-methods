@@ -71,7 +71,7 @@ class Smooth(CompositeSaliencyMethod):
         for i in range(self.smooth_rate):
             noisy_input = self.noise_func(in_values.clone())
             saliency_maps[i, :] = super().calculate_map(noisy_input, labels, **kwargs)
-        saliency = saliency_maps.mean(axis=0).squeeze()
+        saliency = saliency_maps.mean(axis=0)
         return saliency
 
 
@@ -110,4 +110,7 @@ class Guided(CompositeSaliencyMethod):
 
         """
         guide = self.guidedBP.calculate_map(in_values, labels, **kwargs)
+        for hook in self.guidedBP.hooks:
+            hook.remove()
+        self.guidedBP.hooks = []
         return guide * super().calculate_map(in_values, labels, **kwargs)
