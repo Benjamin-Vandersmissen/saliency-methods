@@ -30,7 +30,7 @@ class FullMask(Mask):
     def mask(self, in_values, shape=None):
         if shape is None:
             shape = in_values.shape
-        return torch.full(shape, self.fill_value, device=in_values.device)
+        return torch.full(shape, self.fill_value, device=in_values.device, dtype=in_values.dtype)
 
 
 class NoisyFullMask(NoiseMixin, FullMask):
@@ -69,7 +69,7 @@ class NoisyMeanMask(NoiseMixin, MeanMask):
 
 
 class BlurredMask(Mask):
-    def __init__(self, kernel_size=16, sigma=(0.1, 2)):
+    def __init__(self, kernel_size=3, sigma=(0.1, 2)):
         super(BlurredMask, self).__init__()
         self.blur = GaussianBlur(kernel_size, sigma)
 
