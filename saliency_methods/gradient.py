@@ -6,7 +6,7 @@ import numpy as np
 from .base import SaliencyMethod
 from .utils import EPSILON
 from .mask import Mask, MeanMask
-__all__ = ['Gradient', 'GradientXInput', 'IntegratedGradient', 'FullGradient', 'GuidedBackProp']
+__all__ = ['Gradient', 'GradientXInput', 'IntegratedGradients', 'FullGradient', 'GuidedBackProp']
 
 
 class Gradient(SaliencyMethod):
@@ -93,14 +93,14 @@ class GradientXInput(Gradient):
         return saliency
 
 
-class IntegratedGradient(Gradient):
+class IntegratedGradients(Gradient):
     """
     Axiomatic Attribution for Deep Networks (Sundararajan et al. 2017)
     """
 
     def __init__(self, net: nn.Module,  baseline: Mask = MeanMask(), nr_steps=50, **kwargs):
         """
-        Initialize a Integrated Gradient Saliency Method object.
+        Initialize a Integrated Gradients Saliency Method object.
         :param net: The neural network to use.
         :param baseline: Which type of baseline to use.
         :param nr_steps: In how many steps do we integrate
@@ -145,7 +145,7 @@ class IntegratedGradient(Gradient):
 
         for i in range(1, self.nr_steps + 1):
             current_input = baseline + (i / self.nr_steps) * (in_values - baseline)
-            gradients.append(super(IntegratedGradient, self).calculate_map(current_input, labels, **kwargs))
+            gradients.append(super(IntegratedGradients, self).calculate_map(current_input, labels, **kwargs))
 
         in_values = in_values.detach().cpu().numpy()
         baseline = baseline.detach().cpu().numpy()
