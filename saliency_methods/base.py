@@ -163,4 +163,4 @@ class CompositeSaliencyMethod(SaliencyMethod):
             A batch of saliency maps for the images and labels provided.
 
         """
-        return self._postprocess(self.method.explain(in_values, labels, **kwargs), **kwargs)
+        return self._postprocess(self.method.explain(in_values, labels), **kwargs)
