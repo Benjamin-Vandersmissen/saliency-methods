@@ -45,9 +45,11 @@ def extract_layers(net: nn.Module, shape: tuple) -> list:
 
 def importance(heatmaps):
     shape = heatmaps.shape[2:]
+    if isinstance(heatmaps, torch.Tensor):
+        heatmaps = heatmaps.detach().numpy()
     heatmaps = np.sum(heatmaps, axis=1).reshape(heatmaps.shape[0], -1)  # Get relevance per pixel
 
-    index = np.array(np.unravel_index(np.argsort(- heatmaps, axis=1), shape))
+    index = np.transpose(np.array(np.unravel_index(np.argsort(- heatmaps, axis=1), shape)), (1,0,2))
     return index
 
 
