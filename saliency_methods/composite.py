@@ -46,7 +46,7 @@ class Smooth(CompositeSaliencyMethod):
         self.noise_func = noise_function
         self.method = method
 
-    def calculate_map(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Smoothens a saliency method of the input w.r.t. the desired label.
 
         Parameters
@@ -70,9 +70,9 @@ class Smooth(CompositeSaliencyMethod):
         saliency_maps = np.empty((self.smooth_rate, *in_values.shape[:]))
         for i in range(self.smooth_rate):
             noisy_input = self.noise_func(in_values.clone())
-            saliency_maps[i, :] = super().calculate_map(noisy_input, labels, **kwargs)
+            saliency_maps[i, :] = super().explain(noisy_input, labels, **kwargs)
         saliency = saliency_maps.mean(axis=0)
-        return saliency
+        return self._postprocess(saliency, **kwargs)
 
 
 class Guided(CompositeSaliencyMethod):
@@ -90,7 +90,7 @@ class Guided(CompositeSaliencyMethod):
         super(Guided, self).__init__(method)
         self.guidedBP = GuidedBackProp(self.method.net)
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Multiply a saliency map of the input w.r.t. the desired label, to it's guided Backpropagation.
 
         Parameters
@@ -109,8 +109,8 @@ class Guided(CompositeSaliencyMethod):
             A batch of saliency maps for the images and labels provided.
 
         """
-        guide = self.guidedBP.calculate_map(in_values, labels, **kwargs)
+        guide = self.guidedBP.explain(in_values, labels, **kwargs)
         for hook in self.guidedBP.hooks:
             hook.remove()
         self.guidedBP.hooks = []
-        return guide * super().calculate_map(in_values, labels, **kwargs)
+        return self._postprocess(guide * super().explain(in_values, labels, **kwargs))

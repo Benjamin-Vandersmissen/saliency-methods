@@ -56,7 +56,7 @@ class Rise(SaliencyMethod):
 
         return mask
 
-    def calculate_map(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
 
         """ Calculates the Rise map of the input w.r.t. the desired label.
 
@@ -100,4 +100,4 @@ class Rise(SaliencyMethod):
         saliency[:, :] = (1 / (self.p * self.nr_masks) * (scores.reshape((batch_size, self.nr_masks, 1, 1)) * self.masks).sum(axis=1))
 
         saliency = self._normalize(saliency.transpose((1, 0, 2, 3)))
-        return saliency
+        return self._postprocess(saliency, **kwargs)

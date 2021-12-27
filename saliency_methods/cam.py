@@ -14,7 +14,7 @@ class _CAM(SaliencyMethod):
     """
     A base class for CAM based methods
     """
-    def __init__(self, net: nn.Module, resize: bool = True, normalise: bool = True, conv_layer_idx=-1, **kwargs):
+    def __init__(self, net: nn.Module, resize: bool = True, conv_layer_idx=-1, **kwargs):
         """
         Initialize a CAM based saliency method object.
         :param net: The neural network model to use.
@@ -25,7 +25,6 @@ class _CAM(SaliencyMethod):
         """
         super().__init__(net, **kwargs)
         self.resize = resize
-        self.normalised = normalise
         self.conv_layer: nn.Conv2d = None
         self.activation_hook = None
         self.conv_out = None
@@ -79,7 +78,7 @@ class _CAM(SaliencyMethod):
         """
         raise NotImplementedError
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate Class Activation Mapping for the given input.
 
         Parameters
@@ -121,10 +120,7 @@ class _CAM(SaliencyMethod):
 
         saliency = saliency.detach().cpu().numpy()
 
-        if self.normalised:
-            saliency = self._normalize(saliency)
-
-        return saliency
+        return self._postprocess(saliency, **kwargs)
 
 
 class CAM(_CAM):
@@ -172,7 +168,7 @@ class CAM(_CAM):
         weights = weights.view((*weights.shape[0:2], 1, 1))
         return weights
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate Class Activation Mapping for the given input.
 
         Parameters
@@ -197,7 +193,7 @@ class CAM(_CAM):
             self._hook_conv_layer()
             self._find_fc_layer(layers)
 
-        return super().calculate_map(in_values, labels, **kwargs)
+        return super().explain(in_values, labels, **kwargs)
 
 
 class GradCAM(_CAM):
@@ -261,7 +257,7 @@ class GradCAM(_CAM):
         self.net.zero_grad()
         torch.gather(scores, 1, labels).sum(dim=1, keepdim=True).backward(torch.ones_like(labels))
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the gradient-based Class Activation Mapping of the input w.r.t. the desired label.
 
         Parameters
@@ -290,7 +286,7 @@ class GradCAM(_CAM):
 
         self._backprop(in_values, labels)
 
-        return super().calculate_map(in_values, labels, **kwargs)
+        return super().explain(in_values, labels, **kwargs)
 
 
 class ScoreCAM(_CAM):
@@ -354,7 +350,7 @@ class ScoreCAM(_CAM):
         scores = F.softmax(scores, dim=0)
         return scores.reshape((batch_size, conv_channels, 1, 1))
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Score-based Class Activation Mapping of the input w.r.t. the desired label.
 
         Parameters
@@ -381,7 +377,7 @@ class ScoreCAM(_CAM):
         baseline = torch.zeros((1, *self.in_values.shape[1:]))
         self.base_score = self.net(baseline).squeeze()
 
-        return super().calculate_map(in_values, labels, **kwargs)
+        return super().explain(in_values, labels, **kwargs)
 
 
 class GradCAMpp(GradCAM):
@@ -475,7 +471,7 @@ class AblationCAM(_CAM):
         self._hook_conv_layer()
         return scores.reshape(batch_size, channels, 1, 1)
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Score-based Class Activation Mapping of the input w.r.t. the desired label.
 
         Parameters
@@ -498,7 +494,7 @@ class AblationCAM(_CAM):
         self.in_values = in_values
         self.labels = labels.reshape((in_values.shape[0],1))
 
-        return super().calculate_map(in_values, labels, **kwargs)
+        return super().explain(in_values, labels, **kwargs)
 
 
 class XGradCAM(GradCAM):

@@ -22,7 +22,7 @@ class Gradient(SaliencyMethod):
         """
         super(Gradient, self).__init__(net, **kwargs)
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Gradient of the input w.r.t. the desired label.
 
         Parameters
@@ -52,7 +52,7 @@ class Gradient(SaliencyMethod):
         out_values.backward(gradient=torch.ones_like(out_values))
         saliency = in_values.grad.detach().cpu().numpy()
 
-        return saliency
+        return self._postprocess(saliency, **kwargs)
 
 
 class GradientXInput(Gradient):
@@ -68,7 +68,7 @@ class GradientXInput(Gradient):
         """
         super(Gradient, self).__init__(net, **kwargs)
 
-    def calculate_map(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Gradient of the input w.r.t. the desired label and multiply with the input.
 
         Parameters
@@ -87,7 +87,7 @@ class GradientXInput(Gradient):
             A batch of saliency maps for the images and labels provided.
 
         """
-        gradient = super().calculate_map(in_values, labels, **kwargs)
+        gradient = super().explain(in_values, labels, **kwargs)
         saliency = gradient * in_values.detach().cpu().numpy()
 
         return saliency
@@ -120,7 +120,7 @@ class IntegratedGradients(Gradient):
 
         return baseline
 
-    def calculate_map(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs):
+    def explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs):
         """ Calculates the Integrated Gradient of the input w.r.t. the desired label.
 
         Parameters
@@ -145,12 +145,12 @@ class IntegratedGradients(Gradient):
 
         for i in range(1, self.nr_steps + 1):
             current_input = baseline + (i / self.nr_steps) * (in_values - baseline)
-            gradients.append(super(IntegratedGradients, self).calculate_map(current_input, labels, **kwargs))
+            gradients.append(super(IntegratedGradients, self).explain(current_input, labels, **kwargs))
 
         in_values = in_values.detach().cpu().numpy()
         baseline = baseline.detach().cpu().numpy()
         saliency = ((in_values - baseline) * np.average(gradients, axis=0))
-        return saliency
+        return self._postprocess(saliency, **kwargs)
 
 
 class FullGradient(Gradient):
@@ -185,7 +185,7 @@ class FullGradient(Gradient):
             self.conv_biases.append(module.bias.data)
 
     @staticmethod
-    def _postprocess(gradient, shape):
+    def _postprocess_gradient(gradient, shape):
         """
         Post process a gradient by first taking the absolute value,
         then normalising to the [0,1] range and finally upscaling via bilinear interpolation.
@@ -206,7 +206,7 @@ class FullGradient(Gradient):
         gradient = F.interpolate(gradient, shape[2:], mode='bilinear', align_corners=True)
         return gradient
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Full Gradient of the input w.r.t. the desired label.
 
         Parameters
@@ -228,17 +228,17 @@ class FullGradient(Gradient):
         in_values.to(self.device)
         shape = in_values.shape
 
-        grad = torch.tensor(super().calculate_map(in_values, labels, **kwargs), device=self.device)
-        saliency = self._postprocess(grad, shape) * in_values
+        grad = torch.tensor(super().explain(in_values, labels, **kwargs), device=self.device)
+        saliency = self._postprocess_gradient(grad, shape) * in_values
         saliency = saliency.sum(dim=1, keepdim=True)
 
         for i in range(len(self.conv_gradients)):
-            interpolated = self._postprocess(self.conv_gradients[i], shape)
+            interpolated = self._postprocess_gradient(self.conv_gradients[i], shape)
             interpolated *= self.conv_biases[i].view((1, self.conv_biases[i].shape[0], 1, 1))
             saliency += interpolated.sum(dim=1, keepdim=True)
 
         saliency = saliency.tile((1, shape[1], 1, 1))  # Convert to correct number of channels
-        return saliency.detach().cpu().numpy()
+        return self._postprocess(saliency.detach().cpu().numpy(), **kwargs)
 
 
 class GuidedBackProp(Gradient):
@@ -277,7 +277,7 @@ class GuidedBackProp(Gradient):
                 self.hooks.append(module.register_backward_hook(back_hook))
                 self.hooks.append(module.register_forward_hook(forward_hook))
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Guided Backpropagation of the input w.r.t. the desired label.
 
         Parameters
@@ -299,4 +299,4 @@ class GuidedBackProp(Gradient):
         if len(self.hooks) == 0:
             self.hook_grad()
 
-        return super(GuidedBackProp, self).calculate_map(in_values, labels, **kwargs)
+        return super(GuidedBackProp, self).explain(in_values, labels, **kwargs)

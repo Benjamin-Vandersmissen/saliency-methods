@@ -36,31 +36,68 @@ class SaliencyMethod(ABC):
 
     @staticmethod
     def _normalize(saliency: np.ndarray) -> np.ndarray:
-        """Normalize a saliency map to range [0,1].
+        """Normalize a batch of saliency maps to range [0,1].
 
         Parameters
         ----------
 
-        saliency: 3D-np.ndarray of shape (channel, width, height)
-            The calculated saliency map.
+        saliency: 4D-np.ndarray of shape (batch, channel, width, height)
+            The calculated batch of saliency maps.
 
         Returns
         -------
 
-        3D-np.ndarray of shape (channel, width, height)
-            The saliency map normalized over all values.
+        4D-np.ndarray of shape (batch, channel, width, height)
+            The batch of saliency maps normalized over (channel, width, height).
         """
-        return (saliency - saliency.min()) / (saliency.max() - saliency.min())
+        min = saliency.min(axis=(-1, -2, -3), keepdims=True)
+        max = saliency.max(axis=(-1, -2, -3), keepdims=True)
+        return (saliency - min) / (max-min)
+
+    @staticmethod
+    def _postprocess(saliency: np.ndarray, only_positive=False, normalize=False, pixel_level=False, **kwargs) -> np.ndarray:
+        """Postprocess a batch of saliency maps.
+
+        Parameters
+        ----------
+
+        saliency: 4D-np.ndarray of shape (batch, channel, width, height)
+            The calculated batch of saliency maps.
+
+        only_positive: bool
+            Whether to allow only positive relevance or also negative relevance.
+
+        normalize: bool
+            Whether to normalize the resulting saliency map or not.
+
+        pixel_level: bool
+            Whether the saliency map contains relevance per pixel, or per channel x pixel.
+        Returns
+        -------
+
+        4D-np.ndarray of shape (batch, channel, width, height)
+            The batch of saliency maps postprocessed.
+        """
+        if only_positive:
+            saliency = np.maximum(0, saliency)
+
+        if normalize:
+            saliency = SaliencyMethod._normalize(saliency)
+
+        if pixel_level:
+            saliency = saliency.mean(axis=1)
+
+        return saliency
 
     @abstractmethod
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate a saliency map for the given input.
 
         Parameters
         ----------
 
         in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
+            A batch of images we want to generate saliency maps for.
 
         labels : 1D-tensor containing *batch* elements
             The labels we want to explain for.
@@ -80,7 +117,7 @@ class SaliencyMethod(ABC):
         Parameters
         ----------
         in_values : 4D-tensor of shape (batch, channel, width, height)
-
+            A batch of images we want to generate saliency maps for.
         Returns
         -------
 
@@ -89,7 +126,7 @@ class SaliencyMethod(ABC):
         """
         in_values = in_values.to(self.device)
         labels = torch.argmax(self.net(in_values), dim=1)
-        return self.calculate_map(in_values, labels)
+        return self.explain(in_values, labels)
 
 
 class CompositeSaliencyMethod(SaliencyMethod):
@@ -107,7 +144,7 @@ class CompositeSaliencyMethod(SaliencyMethod):
         self.method = method
 
     @abstractmethod
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate a composite saliency map for the given input by combining multiple methods.
 
         Parameters
@@ -126,4 +163,4 @@ class CompositeSaliencyMethod(SaliencyMethod):
             A batch of saliency maps for the images and labels provided.
 
         """
-        return self.method.calculate_map(in_values, labels, **kwargs)
+        return self._postprocess(self.method.explain(in_values, labels, **kwargs), **kwargs)

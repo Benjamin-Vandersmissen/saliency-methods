@@ -27,7 +27,7 @@ class LRP(SaliencyMethod):
 
         self.assign_rules()
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the LRP map of the input w.r.t. the desired labels.
 
         Parameters
@@ -53,7 +53,7 @@ class LRP(SaliencyMethod):
         # All 0's except the original values on the positions of the label.
         grad_out = torch.scatter(torch.zeros_like(out_values), 1, labels, torch.gather(out_values, 1, labels))
         grad = torch.autograd.grad(out_values, in_values, grad_out)[0]
-        return grad.detach().numpy()
+        return self._postprocess(grad.detach().cpu().numpy(), **kwargs)
 
     def assign_rules(self):
         """ Assign LRP rules to each layer in the neural network
@@ -94,5 +94,5 @@ class MarginalWinningProbability(SaliencyMethod):
         self.forward_hooks = []
         self.backward_hooks = []
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         pass

@@ -32,7 +32,7 @@ class Occlusion(SaliencyMethod):
         self.resize = resize
         super().__init__(net, **kwargs)
 
-    def calculate_map(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the Occlusion map of the input w.r.t. the desired label.
 
         Parameters
@@ -91,4 +91,4 @@ class Occlusion(SaliencyMethod):
         if self.resize:
             saliency = F.interpolate(saliency, in_shape)
         saliency = saliency.detach().cpu().numpy()
-        return saliency
+        return self._postprocess(saliency, **kwargs)
