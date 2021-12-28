@@ -14,13 +14,17 @@ class _CAM(SaliencyMethod):
     """
     A base class for CAM based methods
     """
-    def __init__(self, net: nn.Module, resize: bool = True, conv_layer_idx=-1, **kwargs):
+    def __init__(self, net: nn.Module, resize: bool = True, conv_layer_idx=-1, before_layer=False, **kwargs):
         """
         Initialize a CAM based saliency method object.
         :param net: The neural network model to use.
         :param resize: Whether to resize the resulting saliency map using bi-linear interpolation
         :param normalise: Whether to normalize the map to the [0,1] range
         :param conv_layer_idx: The convolutional layer to hook (either by index or name)
+        :param before_layer: Whether to consider inputs and gradients from just before the layer or outputs and
+                             gradients after the layer. This is primarily used in ResNet architectures where there is no
+                             handy conv layer at the end to extract feature maps&gradients, so instead one can use the
+                             inputs and gradients just before the AdaptiveAvgPool layer.
         :param kwargs: Other arguments.
         """
         super().__init__(net, **kwargs)
@@ -28,6 +32,7 @@ class _CAM(SaliencyMethod):
         self.conv_layer: nn.Conv2d = None
         self.activation_hook = None
         self.conv_out = None
+        self.before_layer = before_layer
         self.conv_layer_idx = conv_layer_idx
 
     def _find_conv_layer(self, layers):
@@ -36,13 +41,13 @@ class _CAM(SaliencyMethod):
         if isinstance(self.conv_layer_idx, str):
             for name, layer in layers[::-1]:
                 if name == self.conv_layer_idx:
-                    if not isinstance(layer, nn.Conv2d):
-                        raise Exception("The provided layer %s should be a convolutional layer!" % self.conv_layer_idx)
-                    else:
-                        self.conv_layer = layer
-                        break
+                    # if not isinstance(layer, nn.Conv2d):
+                    #     raise Exception("The provided layer %s should be a convolutional layer!" % self.conv_layer_idx)
+                    # else:
+                    self.conv_layer = layer
+                    break
             else:
-                raise Exception("No convolutional layer was found with name : " + self.conv_layer_idx)
+                raise Exception("No layer was found with name : " + self.conv_layer_idx)
 
         else:
             conv_layers = [layer for name, layer in layers if isinstance(layer, nn.Conv2d)]
@@ -54,8 +59,11 @@ class _CAM(SaliencyMethod):
     def _hook_conv_layer(self):
         """Hook the last convolutional layer to find its output activations."""
 
-        def _conv_hook(_, __, outp):
-            self.conv_out = outp
+        def _conv_hook(_, inp, outp):
+            if self.before_layer:
+                self.conv_out = inp[0]
+            else:
+                self.conv_out = outp
 
         if self.activation_hook is None:
             self.activation_hook = self.conv_layer.register_forward_hook(_conv_hook)
@@ -214,8 +222,11 @@ class GradCAM(_CAM):
     def _hook_grad(self):
         """Hook the given convolutional layer to find its gradients."""
 
-        def _grad_hook(_, __, outp):
-            self.grad = outp[0]
+        def _grad_hook(_, inp, outp):
+            if self.before_layer:
+                self.grad = inp[0]
+            else:
+                self.grad = outp[0]
         if self.grad_hook is None:
             self.grad_hook = self.conv_layer.register_backward_hook(_grad_hook)
 
@@ -329,25 +340,34 @@ class ScoreCAM(_CAM):
         self.activation_hook.remove()
         self.activation_hook = None
 
-        for i in range(batch_size):
-            masks = F.interpolate(self.conv_out, self.in_values.shape[2:])[1].unsqueeze(0)
-            masks = masks.transpose(0, 1)
+        minibatch_size = 64
+        with torch.no_grad():
+            for i in range(batch_size):
+                masks = F.interpolate(self.conv_out, self.in_values.shape[2:])[i].unsqueeze(0)
+                masks = masks.transpose(0, 1)
 
-            # Normalize mask on a per channel base
-            masks -= masks.amin(dim=[2, 3], keepdim=True)
-            # Use small epsilon for numerical stability
-            denominator = masks.amax(dim=(2, 3), keepdim=True)
-            denominator[denominator == 0] = EPSILON
-            masks /= denominator
+                # Normalize mask on a per channel base
+                masks -= masks.amin(dim=[2, 3], keepdim=True)
+                # Use small epsilon for numerical stability
+                denominator = masks.amax(dim=(2, 3), keepdim=True)
+                denominator[denominator == 0] = torch.FloatTensor([EPSILON])
+                masks /= denominator
 
-            # Duplicate mask for each of the input image channels
-            masks = masks.tile(1, in_channels, 1, 1)
-            scores[i] = self.net(masks * self.in_values[i].unsqueeze(0))[:, labels[i]] - self.base_score[labels[i]]
+                # Duplicate mask for each of the input image channels
+                masks = masks.tile(1, in_channels, 1, 1)
+
+                for j in range(0, int(np.ceil(conv_channels/minibatch_size))):
+                    start = j*minibatch_size
+                    end = start+minibatch_size
+                    if end > conv_channels:
+                        end = conv_channels
+                    scores[i][start:end] = self.net(masks[start:end]*self.in_values[i].unsqueeze(0))[:, labels[i]] -\
+                                           self.base_score[labels[i]]
 
         # Re-enable hook as we are finished with it.
         self._hook_conv_layer()
 
-        scores = F.softmax(scores, dim=0)
+        scores = F.softmax(scores, dim=1)
         return scores.reshape((batch_size, conv_channels, 1, 1))
 
     def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
@@ -413,7 +433,7 @@ class GradCAMpp(GradCAM):
         grad_3 = torch.pow(self.grad, 3)
 
         divisor = 2*grad_2 + (self.conv_out * grad_3).sum(dim=[2, 3], keepdim=True)
-        divisor[divisor == 0] = EPSILON  # epsilon to avoid numerical instability
+        divisor[divisor == 0] = torch.FloatTensor([EPSILON])  # epsilon to avoid numerical instability
         weights = ((grad_2 / divisor) * F.relu(self.conv_out)).sum(dim=[2, 3], keepdim=True)
         return weights
 
@@ -527,6 +547,6 @@ class XGradCAM(GradCAM):
 
         """
         denominator = self.conv_out.sum(dim=(2, 3), keepdim=True)
-        denominator[denominator == 0] = EPSILON
+        denominator[denominator == 0] = torch.FloatTensor([EPSILON])
         weights = (self.grad * self.conv_out/denominator).sum(dim=(2,3), keepdim=True)
         return weights
