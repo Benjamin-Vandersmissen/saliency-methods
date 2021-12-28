@@ -87,10 +87,10 @@ class GradientXInput(Gradient):
             A batch of saliency maps for the images and labels provided.
 
         """
-        gradient = super().explain(in_values, labels, **kwargs)
+        gradient = super().explain(in_values, labels)
         saliency = gradient * in_values.detach().cpu().numpy()
 
-        return saliency
+        return self._postprocess(saliency, **kwargs)
 
 
 class IntegratedGradients(Gradient):
@@ -199,7 +199,7 @@ class FullGradient(Gradient):
         gradient -= gradient.amin(dim=(2, 3), keepdim=True)
         # Use small epsilon for numerical stability
         denominator = gradient.amax(dim=(2, 3), keepdim=True)
-        denominator[denominator == 0] = EPSILON
+        denominator[denominator == 0] = torch.FloatTensor([EPSILON])
         gradient /= denominator
 
         # Resize to the correct size.
@@ -228,7 +228,7 @@ class FullGradient(Gradient):
         in_values.to(self.device)
         shape = in_values.shape
 
-        grad = torch.tensor(super().explain(in_values, labels, **kwargs), device=self.device)
+        grad = torch.tensor(super().explain(in_values, labels), device=self.device)
         saliency = self._postprocess_gradient(grad, shape) * in_values
         saliency = saliency.sum(dim=1, keepdim=True)
 

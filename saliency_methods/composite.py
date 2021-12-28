@@ -109,8 +109,8 @@ class Guided(CompositeSaliencyMethod):
             A batch of saliency maps for the images and labels provided.
 
         """
-        guide = self.guidedBP.explain(in_values, labels, **kwargs)
+        guide = self.guidedBP.explain(in_values, labels)
         for hook in self.guidedBP.hooks:
             hook.remove()
         self.guidedBP.hooks = []
-        return self._postprocess(guide * super().explain(in_values, labels, **kwargs))
+        return self._postprocess(guide * super().explain(in_values, labels), **kwargs)

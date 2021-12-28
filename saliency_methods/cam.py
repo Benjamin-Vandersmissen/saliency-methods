@@ -524,7 +524,7 @@ class XGradCAM(GradCAM):
 
     def __init__(self, net: nn.Module,  **kwargs):
         """
-        Initialize a new GradCAM++ saliency method object.
+        Initialize a new XGradCAM saliency method object.
         :param net:
         :param kwargs:
         """
