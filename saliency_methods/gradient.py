@@ -229,15 +229,15 @@ class FullGradient(Gradient):
         shape = in_values.shape
 
         grad = torch.tensor(super().explain(in_values, labels), device=self.device)
-        saliency = self._postprocess_gradient(grad, shape) * in_values
-        saliency = saliency.sum(dim=1, keepdim=True)
+        saliency = self._postprocess_gradient(grad * in_values, shape)
 
-        for i in range(len(self.conv_gradients)):
-            interpolated = self._postprocess_gradient(self.conv_gradients[i], shape)
-            interpolated *= self.conv_biases[i].view((1, self.conv_biases[i].shape[0], 1, 1))
-            saliency += interpolated.sum(dim=1, keepdim=True)
+        while len(self.conv_gradients) > 0:
+            grad = self.conv_gradients.pop()
+            bias = self.conv_biases.pop()
+            processed = self._postprocess_gradient(grad * bias.view(1, -1, 1, 1), shape)
+            processed = processed.sum(dim=1, keepdims=True)
+            saliency += processed
 
-        saliency = saliency.tile((1, shape[1], 1, 1))  # Convert to correct number of channels
         return self._postprocess(saliency.detach().cpu().numpy(), **kwargs)
 
 
