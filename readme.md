@@ -66,12 +66,14 @@ The following methods are implemented:
 
 | | VGG-16 | ResNet-50 |
 |------|------|--------|
-|CAM | Not Supported | Not Supported|
+|CAM | Not Supported [^2] | Not Supported [^2]|
 |Grad-CAM| ![](./images/gradcam_vgg.png)|![](./images/gradcam_resnet.png) |
 |Score-CAM| ![](./images/scorecam_vgg.png)|![](./images/scorecam_resnet.png) |
 |Grad-CAM++| ![](./images/gradcampp_vgg.png)|![](./images/gradcampp_resnet.png) |
 |Ablation-CAM| ![](./images/ablationcam_vgg.png)|![](./images/ablationcam_resnet.png) |
 |XGrad-CAM| ![](./images/xgradcam_vgg.png)|![](./images/xgradcam_resnet.png) |
+
+[^2]: CAM needs a special layer architecture, with a Global Average Pooling layer directly after the last convolutional layer and before the linear layer to work.
 
 ### Backpropagation-based methods
 These methods generate explanation maps by backpropagating a relevance score using different rules.
