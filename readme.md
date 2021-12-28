@@ -1,12 +1,12 @@
-#Saliency Methods
+# Saliency Methods
 
-##What are Saliency Methods
+## What are Saliency Methods
 
 **Saliency Methods** or visual explanation methods are methods that generate an explanation map for an image of shape (c x w x h), given a model that can generate predictions for the image and a (predicted) label. The explanation map is then a (c x w x h) array that contains a relevance score for the specific subpixel at that position in the input image. This score is a measure of how important the subpixel is for the label, determined by the given model.
 
 Visual explanations can be used to determine which features in the image a model uses in its prediction. This can then be used to detect bias in a model, detect adversarial attacks against the model and more.
 
-##General Info
+## General Info
 
 All Saliency methods in this library have been tested both on **VGG-16** and **ResNet-50**. While it is impossible to test all possible network configurations, the intention is that these methods work on all models that have the same components as VGG-16 or ResNet-50.
 
@@ -14,9 +14,9 @@ All sample visualisations in this document are generated using a model from Torc
 
 ![](./images/sample.jpeg)
 
-##Implemented Methods
+## Implemented Methods
 
-###Occlusion- / Perturbation-based methods
+### Occlusion- / Perturbation-based methods
 
 These methods generate an explanation by systematically occluding parts of the original input image and calculating the score difference between 'P(label|occluded_img, model [^1] )' and 'P(label|img, model)' This difference is then used as a measure of relevance for the occluded part. The following methods are implemented in this library:
 
@@ -33,7 +33,7 @@ These methods generate an explanation by systematically occluding parts of the o
 
 [^1]:These models don't necessarily need to be Neural Network models.
 
-###Gradient-based Methods
+### Gradient-based Methods
 These methods use the gradient as an indication of the relevance of the pixels.
 
 The following methods are implemented in this library:
@@ -53,7 +53,7 @@ The following methods are implemented in this library:
 |Guided Backpropagation | ![](./images/guidedbp_vgg.png)| ![](./images/guidedbp_resnet.png)
 
 
-###CAM-based methods
+### CAM-based methods
 These methods all follow the same principle, where a computer vision network is divided in two parts : a feature extraction part and a classification part. CAM-methods generate an explanation map by taking the weighted sum of the feature maps at a certain point in the feature extraction part. These methods only differ in the way the weights are calculated.
 The following methods are implemented:
 
@@ -73,14 +73,14 @@ The following methods are implemented:
 |Ablation-CAM| ![](./images/ablationcam_vgg.png)|![](./images/ablationcam_resnet.png) |
 |XGrad-CAM| ![](./images/xgradcam_vgg.png)|![](./images/xgradcam_resnet.png) |
 
-###Backpropagation-based methods
+### Backpropagation-based methods
 These methods generate explanation maps by backpropagating a relevance score using different rules.
 
 | | VGG-16 | ResNet-50 |
 |-----|--------|--------|
 | LRP| ![](./images/lrp_vgg.png)| ![](./images/lrp_resnet.png)|
 
-###Composite methods
+### Composite methods
 
 This repository also contains two composite methods, these are methods that are used to enhance the explanation maps for a given explanation method.
 
@@ -96,13 +96,13 @@ The following methods are implemented:
 | Grad-CAM | ![](./images/gradcam_vgg.png) | ![](./images/gradcam_resnet.png)|
 | Guided Grad-CAM | ![](./images/guided_gradcam_vgg.png) | ![](./images/guided_gradcam_resnet.png) |
 
-##Additional tools:
+## Additional tools:
 
 This repository contains implementations of a number of different commonly used evaluation methods for visual explanations.
 
 TODO: more info!
 
-##References
+## References
 (Chattopadhyay2017) Grad-CAM++: Improved Visual Explanations for Deep Convolutional Networks, Chattopadhyay et al. 2017
 
 (Desai2020) Ablation-CAM: Visual Explanations for Deep Convolutional Network via Gradient-free Localization, Desai & Ramaswamy 2020
