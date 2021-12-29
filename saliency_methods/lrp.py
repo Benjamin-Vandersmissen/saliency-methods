@@ -27,6 +27,13 @@ class LRP(SaliencyMethod):
 
         self.assign_rules()
 
+    def _explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        out_values = kwargs['out']
+        # All 0's except the original values on the positions of the label.
+        grad_out = torch.scatter(torch.zeros_like(out_values), 1, labels, torch.gather(out_values, 1, labels))
+        grad = torch.autograd.grad(out_values, in_values, grad_out)[0]
+        return self._postprocess(grad.detach().cpu().numpy(), **kwargs)
+
     def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculates the LRP map of the input w.r.t. the desired labels.
 
@@ -46,14 +53,13 @@ class LRP(SaliencyMethod):
             A batch of saliency maps for the images and labels provided.
 
         """
-
-        in_values.to(self.device).requires_grad_(True)
-        labels = labels.reshape(labels.shape[0], 1)
+        in_values.requires_grad_(True)
         out_values = self.net(in_values)
-        # All 0's except the original values on the positions of the label.
-        grad_out = torch.scatter(torch.zeros_like(out_values), 1, labels, torch.gather(out_values, 1, labels))
-        grad = torch.autograd.grad(out_values, in_values, grad_out)[0]
-        return self._postprocess(grad.detach().cpu().numpy(), **kwargs)
+        return super().explain(in_values, labels, out=out_values, **kwargs)
+
+    def explain_prediction(self, in_values: torch.tensor, **kwargs) -> np.ndarray:
+        in_values = in_values.data.requires_grad_(True)
+        return super().explain_prediction(in_values, **kwargs)
 
     def assign_rules(self):
         """ Assign LRP rules to each layer in the neural network

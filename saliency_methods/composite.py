@@ -46,7 +46,7 @@ class Smooth(CompositeSaliencyMethod):
         self.noise_func = noise_function
         self.method = method
 
-    def explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def _explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Smoothens a saliency method of the input w.r.t. the desired label.
 
         Parameters
@@ -65,14 +65,12 @@ class Smooth(CompositeSaliencyMethod):
             A batch of saliency maps for the images and labels provided.
 
         """
-        in_values.to(self.device)
-
-        saliency_maps = np.empty((self.smooth_rate, *in_values.shape[:]))
+        saliency = np.zeros_like(in_values)
         for i in range(self.smooth_rate):
             noisy_input = self.noise_func(in_values.clone())
-            saliency_maps[i, :] = super().explain(noisy_input, labels, **kwargs)
-        saliency = saliency_maps.mean(axis=0)
-        return self._postprocess(saliency, **kwargs)
+            saliency += self.method.explain(noisy_input, labels)
+        saliency /= self.smooth_rate
+        return saliency
 
 
 class Guided(CompositeSaliencyMethod):
@@ -90,7 +88,7 @@ class Guided(CompositeSaliencyMethod):
         super(Guided, self).__init__(method)
         self.guidedBP = GuidedBackProp(self.method.net)
 
-    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def _explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Multiply a saliency map of the input w.r.t. the desired label, to it's guided Backpropagation.
 
         Parameters
@@ -113,4 +111,4 @@ class Guided(CompositeSaliencyMethod):
         for hook in self.guidedBP.hooks:
             hook.remove()
         self.guidedBP.hooks = []
-        return self._postprocess(guide * super().explain(in_values, labels), **kwargs)
+        return guide * self.method.explain(in_values, labels)

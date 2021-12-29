@@ -26,7 +26,6 @@ class Rise(SaliencyMethod):
         self.nr_masks = nr_masks
         self.mask_size = mask_size
         self.p = p
-        self.masks = None
         super().__init__(net, **kwargs)
 
     def _generate_mask(self, image_size):
@@ -56,48 +55,23 @@ class Rise(SaliencyMethod):
 
         return mask
 
-    def explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
-
-        """ Calculates the Rise map of the input w.r.t. the desired label.
-
-        Parameters
-        ----------
-
-        in_values : 4D-tensor of shape (batch, channel, width, height)
-            A batch of images we want to generate saliency maps for.
-
-        labels : 1D-tensor containing *batch* elements.
-            The labels for the images we want to explain for.
-
-        Returns
-        -------
-
-        4D-numpy.ndarray
-            A batch of saliency maps for the images and labels provided.
-
-        """
+    def _explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         batch_size = in_values.shape[0]
         channels = in_values.shape[1]
-        in_values = in_values.to(self.device)
-        label = labels.reshape((batch_size, 1))
 
         image_size = in_values.shape[2:]
-        if self.masks is None:
-            self.masks = []
-            for i in range(self.nr_masks):
-                self.masks.append(self._generate_mask(image_size))
-            self.masks = np.asarray(self.masks)
 
-        scores = torch.empty((batch_size, self.nr_masks))
+        scores_masks = torch.zeros((batch_size, 1, *image_size))
         with torch.no_grad():
             for i in range(self.nr_masks):
-                mask = torch.FloatTensor(self.masks[i], device=self.device)
+                mask = torch.FloatTensor(self._generate_mask(image_size), device=self.device)
                 masked_in = (in_values * mask).to(self.device)
-                scores[:, i] = torch.gather(F.softmax(self.net(masked_in), dim=1), 1, label).cpu()
+                scores = torch.gather(F.softmax(self.net(masked_in), dim=1), 1, labels).cpu()
+                scores_masks[:] += scores * mask
 
-        scores = scores.detach().cpu().numpy()
+        scores_masks = scores_masks.detach().cpu().numpy()
         saliency = np.empty((channels, batch_size, *image_size))
-        saliency[:, :] = (1 / (self.p * self.nr_masks) * (scores.reshape((batch_size, self.nr_masks, 1, 1)) * self.masks).sum(axis=1))
+        saliency[:, :] = (1 / (self.p * self.nr_masks) * scores_masks)
 
         saliency = self._normalize(saliency.transpose((1, 0, 2, 3)))
-        return self._postprocess(saliency, **kwargs)
+        return saliency

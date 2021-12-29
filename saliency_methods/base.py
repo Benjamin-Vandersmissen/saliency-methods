@@ -50,8 +50,12 @@ class SaliencyMethod(ABC):
         4D-np.ndarray of shape (batch, channel, width, height)
             The batch of saliency maps normalized over (channel, width, height).
         """
-        min = saliency.min(axis=(-1, -2, -3), keepdims=True)
-        max = saliency.max(axis=(-1, -2, -3), keepdims=True)
+        if len(saliency.shape) == 4:
+            axis = (1, 2, 3)
+        elif len(saliency.shape) == 3:
+            axis = (1, 2)
+        min = saliency.min(axis=axis, keepdims=True)
+        max = saliency.max(axis=axis, keepdims=True)
         return (saliency - min) / (max-min)
 
     @staticmethod
@@ -81,15 +85,18 @@ class SaliencyMethod(ABC):
         if only_positive:
             saliency = np.maximum(0, saliency)
 
-        if normalize:
-            saliency = SaliencyMethod._normalize(saliency)
-
         if pixel_level:
             saliency = saliency.mean(axis=1)
+
+        if normalize:
+            saliency = SaliencyMethod._normalize(saliency)
 
         return saliency
 
     @abstractmethod
+    def _explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        raise NotImplementedError("A Subclass of SaliencyMethod needs to implement this method")
+
     def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate a saliency map for the given input.
 
@@ -109,9 +116,11 @@ class SaliencyMethod(ABC):
             A batch of saliency maps for the images and labels provided.
 
         """
-        raise NotImplementedError("A Subclass of SaliencyMethod needs to implement this function")
+        labels = labels.reshape((labels.shape[0], 1))
+        in_values = in_values.to(self.device)
+        return self._postprocess(self._explain(in_values, labels, **kwargs), **kwargs)
 
-    def explain_prediction(self, in_values: torch.tensor) -> np.ndarray:
+    def explain_prediction(self, in_values: torch.tensor, **kwargs) -> np.ndarray:
         """ Calculate saliency maps for a given input, based on the top-predicted labels.
 
         Parameters
@@ -125,8 +134,9 @@ class SaliencyMethod(ABC):
             A batch of saliency maps for the images provided and labels predicted.
         """
         in_values = in_values.to(self.device)
-        labels = torch.argmax(self.net(in_values), dim=1)
-        return self.explain(in_values, labels)
+        out = self.net(in_values)
+        labels = torch.argmax(out, dim=1, keepdim=True)
+        return self._postprocess(self._explain(in_values, labels, out=out), **kwargs)  # In case we need the prediction scores.
 
 
 class CompositeSaliencyMethod(SaliencyMethod):
@@ -143,24 +153,5 @@ class CompositeSaliencyMethod(SaliencyMethod):
         super().__init__(method.net, method.device)
         self.method = method
 
-    @abstractmethod
-    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
-        """ Calculate a composite saliency map for the given input by combining multiple methods.
-
-        Parameters
-        ----------
-
-        in_values : 4D-tensor of shape (batch, channel, width, height)
-            The image we want to explain. Only the first in the batch is considered.
-
-        labels : 1D-tensor containing *batch* elements
-            The labels we want to explain for.
-
-        Returns
-        -------
-
-        4D-numpy.ndarray
-            A batch of saliency maps for the images and labels provided.
-
-        """
-        return self._postprocess(self.method.explain(in_values, labels), **kwargs)
+    def _explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        return self.method._explain(in_values, labels, **kwargs)

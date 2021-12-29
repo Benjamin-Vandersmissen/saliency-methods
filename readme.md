@@ -63,6 +63,7 @@ The following methods are implemented:
 - Grad-CAM++ (Chattopadhyay2017)
 - Ablation-CAM (Desai2020)
 - Axiom-based Grad-CAM (XGrad-CAM) (Fu2020)
+- Zoom-CAM (Shi2020)
 
 | | VGG-16 | ResNet-50 |
 |------|------|--------|
@@ -72,7 +73,7 @@ The following methods are implemented:
 |Grad-CAM++| ![](./images/gradcampp_vgg.png)|![](./images/gradcampp_resnet.png) |
 |Ablation-CAM| ![](./images/ablationcam_vgg.png)|![](./images/ablationcam_resnet.png) |
 |XGrad-CAM| ![](./images/xgradcam_vgg.png)|![](./images/xgradcam_resnet.png) |
-
+|Zoom-CAM| ![](./images/zoomcam_vgg.png)| ![](./images/zoomcam_resnet.png) |
 [^2]: CAM needs a special layer architecture, with a Global Average Pooling layer directly after the last convolutional layer and before the linear layer to work.
 
 ### Backpropagation-based methods
@@ -114,6 +115,8 @@ TODO: more info!
 (Petsiuk2018) Rise : Randomized Input Sampling for Explanation, Petsiuk et al. 2018
 
 (Selvaraju2017) Grad-CAM: Visual explanations from deep networks via gradient-based localization, Selvaraju et al. 2017
+
+(Shi2020) Zoom-CAM: Generating Fine-grained Pixel Annotations from Image Labels, Shi et al. 2020
 
 (Shrikumar2017) Learning Important Features Through Propagating Activation Differences, Shrikumar et al. 2017
 
