@@ -20,9 +20,7 @@ def extract_layers(net: nn.Module, shape: tuple) -> list:
     Returns
     -------
 
-    3D-numpy.ndarray
-        A saliency map for the first image in the batch.
-
+    list of (name, module) tuples containing all modules in the net
     """
     device = next(net.parameters()).device
 

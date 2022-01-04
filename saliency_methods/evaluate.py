@@ -112,7 +112,7 @@ def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1):
             batch_labels = labels[minibatch_index:minibatch_end]
             batch_saliency_importance = saliency_importance[minibatch_index:minibatch_end]
             for j in range(nr_steps+1):
-                scores = torch.gather(softmax(net(batch_images), 1), 1, batch_labels)
+                scores = torch.gather(softmax(net(batch_images), 1), 1, batch_labels).reshape(-1)
                 deletion_scores[minibatch_index:minibatch_end, j] = scores.detach().cpu().numpy()
 
                 if j == nr_steps:  # Do one last step with the empty image
@@ -120,7 +120,7 @@ def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1):
 
                 indices = batch_saliency_importance[:, :, j*step:(j+1)*step]
 
-                for k in range(batch_size):
+                for k in range(minibatch_size):
                     batch_images[k, :, indices[k, 0], indices[k, 1]] = 0
     return deletion_scores
 
@@ -152,14 +152,14 @@ def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, bl
     with torch.no_grad():
         for i in range(math.ceil(batch_size/minibatch_size)):
             minibatch_index = minibatch_size*i
-            minibatch_end = minibatch_index + minibatch_end
+            minibatch_end = minibatch_index + minibatch_size
             batch_images = images[minibatch_index:minibatch_end]
             batch_labels = labels[minibatch_index:minibatch_end]
             batch_saliency_importance = saliency_importance[minibatch_index:minibatch_end]
 
             batch_blurred_images = blur.mask(batch_images)
             for j in range(nr_steps+1):
-                scores = torch.gather(softmax(net(batch_blurred_images), 1), 1, batch_labels)
+                scores = torch.gather(softmax(net(batch_blurred_images), 1), 1, batch_labels).reshape(-1)
                 insertion_scores[minibatch_index:minibatch_end, j] = scores.detach().cpu().numpy()
 
                 if j == nr_steps:  # Do one last step with the full image
@@ -167,7 +167,7 @@ def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, bl
 
                 indices = batch_saliency_importance[:, :, j*step:(j+1)*step]
 
-                for k in range(batch_size):
+                for k in range(minibatch_size):
                     batch_blurred_images[k, :, indices[k, 0], indices[k, 1]] = \
                         batch_images[k, :, indices[k, 0], indices[k, 1]]
 

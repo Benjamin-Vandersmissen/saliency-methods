@@ -29,6 +29,7 @@ class Occlusion(SaliencyMethod):
         self.mgf = mgf
         self.occlusion_size = occlusion_size
         self.occlusion_window = occlusion_window
+        self.stride = stride
         if stride == -1:
             self.stride = occlusion_size
         super().__init__(net, **kwargs)
@@ -53,7 +54,7 @@ class Occlusion(SaliencyMethod):
         saliency = torch.zeros_like(in_values)
         divisor = torch.zeros_like(in_values)
 
-        initial_scores = torch.gather(self.net(in_values), 1, labels).cpu()
+        initial_scores = torch.gather(F.softmax(self.net(in_values), dim=1), 1, labels).cpu()
 
         with torch.no_grad():
             for i in range(0, in_shape[0] - occlusion_shape[0]+1, self.stride[0]):
@@ -61,10 +62,10 @@ class Occlusion(SaliencyMethod):
                     occluded = in_values.clone().to(self.device)
                     occluded[:, :, i:i + occlusion_shape[0], j:j + occlusion_shape[1]] = occlusion_window
 
-                    scores = torch.gather(self.net(occluded), 1, labels).cpu()
+                    scores = torch.gather(F.softmax(self.net(occluded), dim=1), 1, labels).cpu()
                     del occluded
                     saliency[:, :, i:i + occlusion_shape[0], j:j + occlusion_shape[1]] = (initial_scores - scores)
-                    divisor[:, :, i:i+occlusion_shape[0], j:j +occlusion_shape[1]] += 1
+                    divisor[:, :, i:i+occlusion_shape[0], j:j + occlusion_shape[1]] += 1
                     # We distribute the saliency equally over the channels, as the original approach occluded the pixels.
                     # This means that we modify all channels in each iteration. If we were to occlude each channel
                     # individually, we could have scores for each channel.
