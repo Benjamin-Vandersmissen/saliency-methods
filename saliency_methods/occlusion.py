@@ -51,8 +51,8 @@ class Occlusion(SaliencyMethod):
                   .format(occlusion_shape, in_shape), file=sys.stderr)
             print("This might lead to cut-off data at the edges!", file=sys.stderr)
 
-        saliency = torch.zeros_like(in_values)
-        divisor = torch.zeros_like(in_values)
+        saliency = torch.zeros_like(in_values, device=self.device)
+        divisor = torch.zeros_like(in_values, device=self.device)
 
         initial_scores = torch.gather(F.softmax(self.net(in_values), dim=1), 1, labels).cpu()
 
