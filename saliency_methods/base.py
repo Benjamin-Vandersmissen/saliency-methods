@@ -116,7 +116,7 @@ class SaliencyMethod(ABC):
             A batch of saliency maps for the images and labels provided.
 
         """
-        labels = labels.reshape((labels.shape[0], 1))
+        labels = labels.reshape((labels.shape[0], 1)).to(self.device)
         in_values = in_values.to(self.device)
         return self._postprocess(self._explain(in_values, labels, **kwargs), **kwargs)
 
