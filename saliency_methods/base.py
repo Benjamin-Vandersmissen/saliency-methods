@@ -130,13 +130,15 @@ class SaliencyMethod(ABC):
         Returns
         -------
 
+        2D-numpy.ndarray
+            The predicted labels for the input images.
         4D-numpy.ndarray
             A batch of saliency maps for the images provided and labels predicted.
         """
         in_values = in_values.to(self.device)
         out = self.net(in_values)
         labels = torch.argmax(out, dim=1, keepdim=True)
-        return self._postprocess(self._explain(in_values, labels, out=out), **kwargs)  # In case we need the prediction scores.
+        return labels.cpu().numpy(), self._postprocess(self._explain(in_values, labels, out=out), **kwargs)  # In case we need the prediction scores.
 
 
 class CompositeSaliencyMethod(SaliencyMethod):
