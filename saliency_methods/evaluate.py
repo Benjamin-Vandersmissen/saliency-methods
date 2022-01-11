@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch.nn.functional import softmax
 from .utils import importance
-from .mask import BlurredMask, MeanMask, FullMask, UniformMask
+from .mask import BlurredMask, FullMask, UniformMask
 
 
 def intersection_over_union(saliency, masks):
@@ -80,7 +80,7 @@ def average_drop_confidence_increase(saliency, net, images, labels):
         return drop.numpy(), confidence_increase
 
 
-def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1):
+def _ins_del_parent(saliency, net, start, end, labels, nr_steps=100, minibatch_size=-1):
     """
     :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
     :param net: The neural network trained on the images and labels
@@ -91,7 +91,7 @@ def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1):
     :return: An array representing the scores of the deleted images at each step in the process .
     """
 
-    batch_size = images.shape[0]
+    batch_size = start.shape[0]
     if minibatch_size == -1:
         minibatch_size = batch_size
 
@@ -101,28 +101,42 @@ def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1):
 
     #  Return the indices in the saliency maps ordered by importance.
     saliency_importance = torch.tensor(importance(saliency))
-    step = math.ceil(images[0, 0].numel() / nr_steps)
+    step = math.ceil(start[0, 0].numel() / nr_steps)
 
-    deletion_scores = np.ndarray((batch_size, nr_steps + 1))
+    all_scores = np.ndarray((batch_size, nr_steps + 1))
     with torch.no_grad():
         for i in range(math.ceil(batch_size/minibatch_size)):
             minibatch_index = minibatch_size*i
             minibatch_end = minibatch_index + minibatch_size
-            batch_images = images[minibatch_index:minibatch_end].to(device)
+            batch_start = start[minibatch_index:minibatch_end].to(device)
+            batch_end = end[minibatch_index:minibatch_end].to(device)
             batch_labels = labels[minibatch_index:minibatch_end].to(device)
             batch_saliency_importance = saliency_importance[minibatch_index:minibatch_end]
             for j in range(nr_steps+1):
-                scores = torch.gather(softmax(net(batch_images), 1), 1, batch_labels).reshape(-1)
-                deletion_scores[minibatch_index:minibatch_end, j] = scores.detach().cpu().numpy()
+                scores = torch.gather(softmax(net(batch_start), 1), 1, batch_labels).reshape(-1)
+                all_scores[minibatch_index:minibatch_end, j] = scores.detach().cpu().numpy()
 
-                if j == nr_steps:  # Do one last step with the empty image
+                if j == nr_steps:  # Do one last step with the end image
                     break
 
                 indices = batch_saliency_importance[:, :, j*step:(j+1)*step]
 
                 for k in range(minibatch_size):
-                    batch_images[k, :, indices[k, 0], indices[k, 1]] = 0
-    return deletion_scores
+                    batch_start[k, :, indices[k, 0], indices[k, 1]] = batch_end[k, :, indices[k, 0], indices[k, 1]]
+    return all_scores
+
+
+def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1):
+    """
+    :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
+    :param net: The neural network trained on the images and labels
+    :param images: the images to occlude, this should match on each index with the corresponding label and saliency map.
+    :param labels: the correct labels, this should match on each index with the corresponding image and saliency map.
+    :param nr_steps: In how many steps do we delete the image, more steps is slower but generates a more accurate curve.
+    :param minibatch_size: How many images to process at once, (-1 = all images at once).
+    :return: An array representing the scores of the deleted images at each step in the process .
+    """
+    return _ins_del_parent(saliency, net, images, FullMask(0).mask(images), labels, nr_steps, minibatch_size)
 
 
 def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blur=BlurredMask(11, 5)):
@@ -136,42 +150,7 @@ def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, bl
     :param blur: Which method do we use to create an empty image.
     :return: An array representing the scores of the deleted images at each step in the process .
     """
-    batch_size = images.shape[0]
-    if minibatch_size == -1:
-        minibatch_size = batch_size
-
-    device = next(net.parameters()).device
-    net = net.eval()
-    labels = labels.view((batch_size, -1)).to(device)
-
-    #  Return the indices in the saliency maps ordered by importance.
-    saliency_importance = torch.tensor(importance(saliency))
-    step = math.ceil(images[0, 0].numel() / nr_steps)
-
-    insertion_scores = np.ndarray((batch_size, nr_steps + 1))
-    with torch.no_grad():
-        for i in range(math.ceil(batch_size/minibatch_size)):
-            minibatch_index = minibatch_size*i
-            minibatch_end = minibatch_index + minibatch_size
-            batch_images = images[minibatch_index:minibatch_end].to(device)
-            batch_labels = labels[minibatch_index:minibatch_end].to(device)
-            batch_saliency_importance = saliency_importance[minibatch_index:minibatch_end]
-
-            batch_blurred_images = blur.mask(batch_images)
-            for j in range(nr_steps+1):
-                scores = torch.gather(softmax(net(batch_blurred_images), 1), 1, batch_labels).reshape(-1)
-                insertion_scores[minibatch_index:minibatch_end, j] = scores.detach().cpu().numpy()
-
-                if j == nr_steps:  # Do one last step with the full image
-                    break
-
-                indices = batch_saliency_importance[:, :, j*step:(j+1)*step]
-
-                for k in range(minibatch_size):
-                    batch_blurred_images[k, :, indices[k, 0], indices[k, 1]] = \
-                        batch_images[k, :, indices[k, 0], indices[k, 1]]
-
-    return insertion_scores
+    return _ins_del_parent(saliency, net, blur.mask(images), images, labels, nr_steps, minibatch_size)
 
 
 def area_over_MoRF_curve(saliency, net, images, labels, nr_steps=100,  blur=UniformMask(), shape=(9, 9), average_over=1):
