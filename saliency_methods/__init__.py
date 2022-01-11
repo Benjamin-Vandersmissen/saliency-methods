@@ -1,1 +1,1 @@
-__all__ = ["base", "cam", "gradient", "lrp", "occlusion"]
+__all__ = ["base", "cam", "gradient", "decompose", "occlusion"]

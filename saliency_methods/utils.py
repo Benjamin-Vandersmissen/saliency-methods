@@ -5,6 +5,14 @@ import numpy as np
 EPSILON = np.finfo(np.float32).eps
 
 
+def safe_divide(a, b):
+    eps = EPSILON
+    if isinstance(a, torch.Tensor):
+        eps = torch.FloatTensor([eps])
+    b[b == 0] = eps
+    return a / b
+
+
 def extract_layers(net: nn.Module, shape: tuple) -> list:
     """ Extract the layers from a neural network in the order they are activated in.
 
