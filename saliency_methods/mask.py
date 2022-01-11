@@ -75,3 +75,14 @@ class BlurredMask(Mask):
 
     def mask(self, in_values, shape=None):
         return self.blur(in_values)
+
+
+class UniformMask(Mask):
+    def __init__(self, lower=0.0, upper=1.0):
+        self.distribution = torch.distributions.Uniform(lower, upper)
+        super().__init__()
+
+    def mask(self, in_values, shape=None):
+        if shape is None:
+            shape = in_values.shape
+        return self.distribution.sample(shape)
