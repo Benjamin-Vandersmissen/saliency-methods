@@ -64,10 +64,10 @@ class Rise(SaliencyMethod):
         scores_masks = torch.zeros((batch_size, 1, *image_size))
         with torch.no_grad():
             for i in range(self.nr_masks):
-                mask = torch.FloatTensor(self._generate_mask(image_size), device=self.device)
-                masked_in = (in_values * mask).to(self.device)
-                scores = torch.gather(F.softmax(self.net(masked_in), dim=1), 1, labels).cpu()
-                scores_masks[:] += scores * mask
+                mask = torch.FloatTensor(self._generate_mask(image_size)).to(self.device)
+                masked_in = (in_values * mask)
+                scores = torch.gather(F.softmax(self.net(masked_in), dim=1), 1, labels)
+                scores_masks[:] += (scores * mask).detach().cpu()
 
         scores_masks = scores_masks.detach().cpu().numpy()
         saliency = np.empty((channels, batch_size, *image_size))
