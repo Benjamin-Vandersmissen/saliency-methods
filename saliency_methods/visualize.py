@@ -4,6 +4,25 @@ from matplotlib import cm
 import numpy as np
 
 
+def overlay(image, saliency_map, colormap=cm.inferno):
+
+    if len(saliency_map.shape) == 3:  # Only allow pixel-level saliency maps
+        saliency_map = np.mean(saliency_map, axis=0)
+    heatmap = np.uint8(255 * colormap(saliency_map))
+
+    if isinstance(image, torch.Tensor):
+        image = image.cpu().detach().numpy()
+        image = np.transpose(np.uint8(255 * image), (1, 2, 0))
+
+    assert (heatmap.shape[:2] == image.shape[:2])
+
+    image = Image.fromarray(image, mode='RGB')
+    heatmap = Image.fromarray(heatmap).convert('RGB')
+    heatmap.putalpha(200)  # Arbitrary transparency value, could be changed later.
+    image.paste(heatmap, (0, 0), heatmap)
+    return image
+
+
 def save_overlay(image, saliency_map, fname, colormap=cm.inferno):
     """
     Overlay the saliency map on the image (with transparancy) and save it to a file.
@@ -13,19 +32,7 @@ def save_overlay(image, saliency_map, fname, colormap=cm.inferno):
     :param colormap: The matplotlib colormap to visualise the saliency map with.
     :return: /
     """
-    heatmap = np.uint8(255*colormap(saliency_map))
-
-    if isinstance(image, torch.Tensor):
-        image = image.cpu().detach().numpy()
-        image = np.transpose(np.uint8(255*image), (1, 2, 0))
-
-    assert(heatmap.shape[:2] == image.shape[:2])
-
-    image = Image.fromarray(image, mode='RGB')
-    heatmap = Image.fromarray(heatmap).convert('RGB')
-    heatmap.putalpha(200)  # Arbitrary transparency value, could be changed later.
-    image.paste(heatmap, (0, 0), heatmap)
-    image.save(fname+".png")
+    overlay(image, saliency_map, colormap).save(fname+".png")
 
 
 def save(saliency_map, fname, colormap=cm.inferno):
