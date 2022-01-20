@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from .base import SaliencyMethod
-from .mask import Mask, MeanMask
+from .mask import Mask, FullMask
 
 __all__ = ['Occlusion']
 
@@ -16,19 +16,17 @@ class Occlusion(SaliencyMethod):
     Visualizing and Understanding Convolutional Networks (Zeiler et al. 2014)
     """
 
-    def __init__(self, net: nn.Module, mgf: Mask = MeanMask(), occlusion_size=(8, 8), occlusion_window: torch.Tensor = None, stride=-1, **kwargs):
+    def __init__(self, net: nn.Module, mgf: Mask = FullMask(0), occlusion_size=(8, 8), stride=-1, **kwargs):
         """
         Initialize a new Occlusion Saliency Method object.
         :param net: The neural network to use.
         :param mgf: A function to generate masks for occlusion (will be used if occlusion_window is None)
-        :param occlusion_size: The size of the occlusion mask to generate (will be used if occlusion_window is None)
-        :param occlusion_window: The occlusion window to use.
+        :param occlusion_size: The size of the occlusion mask to generate
         :param stride: The stride of the sliding window (default -1 -> stride = occlusion_size)
         :param kwargs: Other arguments.
         """
         self.mgf = mgf
         self.occlusion_size = occlusion_size
-        self.occlusion_window = occlusion_window
         self.stride = stride
         if stride == -1:
             self.stride = occlusion_size
@@ -39,9 +37,7 @@ class Occlusion(SaliencyMethod):
         batch_size = in_values.shape[0]
         channels = in_values.shape[1]
 
-        occlusion_window = self.occlusion_window
-        if occlusion_window is None:
-            occlusion_window = self.mgf.mask(in_values, (batch_size, channels, *self.occlusion_size))
+        occlusion_window = self.mgf.mask(in_values, (batch_size, channels, *self.occlusion_size))
 
         in_shape = in_values.shape[2:]  # Don't count batch & channels
         occlusion_shape = occlusion_window.shape[2:]
