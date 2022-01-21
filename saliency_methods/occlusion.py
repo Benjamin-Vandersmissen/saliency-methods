@@ -48,20 +48,25 @@ class Occlusion(SaliencyMethod):
             print("This might lead to cut-off data at the edges!", file=sys.stderr)
 
         saliency = torch.zeros_like(in_values, device=self.device)
-        divisor = torch.zeros_like(in_values, device=self.device)
 
         initial_scores = torch.gather(F.softmax(self.net(in_values), dim=1), 1, labels).cpu()
 
         with torch.no_grad():
-            for i in range(0, in_shape[0] - occlusion_shape[0]+1, self.stride[0]):
-                for j in range(0, in_shape[1] - occlusion_shape[1]+1, self.stride[1]):
+            for i in range(-occlusion_shape[0]+self.stride[0], in_shape[0] - self.stride[0]+1, self.stride[0]):
+                for j in range(-occlusion_shape[1]+self.stride[1], in_shape[1] - self.stride[1]+1, self.stride[1]):
                     occluded = in_values.clone().to(self.device)
-                    occluded[:, :, i:i + occlusion_shape[0], j:j + occlusion_shape[1]] = occlusion_window
+
+                    ii = min(max(i, 0), in_shape[0])
+                    jj = min(max(j, 0), in_shape[1])
+
+                    window = occlusion_window.clone()
+                    window = window[:, :, -i+ii:in_shape[0]-ii, -j+jj:in_shape[1]-jj]
+
+                    occluded[:, :, ii:i + occlusion_shape[0], jj:j + occlusion_shape[1]] = window
 
                     scores = torch.gather(F.softmax(self.net(occluded), dim=1), 1, labels).cpu()
                     del occluded
-                    saliency[:, :, i:i + occlusion_shape[0], j:j + occlusion_shape[1]] = (initial_scores - scores)
-                    divisor[:, :, i:i+occlusion_shape[0], j:j + occlusion_shape[1]] += 1
+                    saliency[:, :, ii:ii + window.shape[2], jj:jj + window.shape[3]] = (initial_scores - scores)
                     # We distribute the saliency equally over the channels, as the original approach occluded the pixels.
                     # This means that we modify all channels in each iteration. If we were to occlude each channel
                     # individually, we could have scores for each channel.
