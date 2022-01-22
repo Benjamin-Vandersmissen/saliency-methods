@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import sys
 
 from .base import SaliencyMethod
-from .utils import extract_layers, EPSILON
+from .utils import extract_layers, safe_divide
 
 __all__ = ["_CAM", "CAM", "GradCAM", "ScoreCAM", "GradCAMpp", "AblationCAM", "XGradCAM"]
 
@@ -347,8 +347,7 @@ class ScoreCAM(_CAM):
                 masks -= masks.amin(dim=[2, 3], keepdim=True)
                 # Use small epsilon for numerical stability
                 denominator = masks.amax(dim=(2, 3), keepdim=True)
-                denominator[denominator == 0] = torch.FloatTensor([EPSILON])
-                masks /= denominator
+                masks = safe_divide(masks, denominator)
 
                 # Duplicate mask for each of the input image channels
                 masks = masks.tile(1, in_channels, 1, 1)
@@ -446,8 +445,7 @@ class GradCAMpp(GradCAM):
         grad_3 = torch.pow(grad, 3)
 
         divisor = 2*grad_2 + (conv_out * grad_3).sum(dim=[2, 3], keepdim=True)
-        divisor[divisor == 0] = torch.FloatTensor([EPSILON])  # epsilon to avoid numerical instability
-        weights = ((grad_2 / divisor) * F.relu(conv_out)).sum(dim=[2, 3], keepdim=True)
+        weights = (safe_divide(grad_2, divisor) * F.relu(conv_out)).sum(dim=[2, 3], keepdim=True)
         return weights
 
 
@@ -498,7 +496,8 @@ class AblationCAM(_CAM):
         with torch.no_grad():
             for i in range(channels):
                 self.conv_layer.weight[i] = 0
-                scores[i, :] = ((initial_score - torch.gather(self.net(self.in_values), 1, self.labels)) / (initial_score + EPSILON)).squeeze()
+                current_scores = torch.gather(self.net(self.in_values), 1, self.labels)
+                scores[i, :] = safe_divide(initial_score - current_scores, initial_score).squeeze()
                 self.conv_layer.weight[i, :, :, :] = current_weights[i, :, :, :]
 
         # Re-enable hook as we are finished with it.
@@ -542,8 +541,7 @@ class XGradCAM(GradCAM):
         """
         conv_out = self.conv_out[-1]  # Do not pop here, as we need this conv_out also in the actual _explain
         denominator = conv_out.sum(dim=(2, 3), keepdim=True)
-        denominator[denominator == 0] = torch.FloatTensor([EPSILON])
-        weights = (self.grad.pop() * conv_out/denominator).sum(dim=(2, 3), keepdim=True)
+        weights = (self.grad.pop() * safe_divide(conv_out, denominator)).sum(dim=(2, 3), keepdim=True)
         return weights
 
 

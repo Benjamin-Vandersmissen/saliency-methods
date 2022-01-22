@@ -5,7 +5,7 @@ from torch import nn
 from copy import deepcopy
 from functools import partial
 
-from .utils import EPSILON
+from .utils import safe_divide
 
 import torch
 
@@ -105,8 +105,7 @@ class LRPZeroRule(LRPRule):
         module = LRPRule._modify_layer(module, rho)
         with torch.enable_grad():
             Z = incr(module.forward_orig(inp))
-            Z = Z + (Z == 0) * EPSILON
-            S = (relevance / Z).data
+            S = safe_divide(relevance, Z).data
             c = torch.autograd.grad(Z, inp, S)[0]
             new_relevance = (inp * c).data
             return new_relevance.data
@@ -135,10 +134,10 @@ class LRPAlphaBetaRule(LRPRule):
             zneg_neg = neg_model.forward_orig(neg_inp)
             zneg_pos = neg_model.forward_orig(pos_inp)
 
-            Spos_pos = relevance / (zpos_pos + EPSILON)
-            Spos_neg = relevance / (zpos_neg + EPSILON)
-            Sneg_pos = relevance / (zneg_pos + EPSILON)
-            Sneg_neg = relevance / (zneg_neg + EPSILON)
+            Spos_pos = safe_divide(relevance, zpos_pos)
+            Spos_neg = safe_divide(relevance, zpos_neg)
+            Sneg_pos = safe_divide(relevance, zneg_pos)
+            Sneg_neg = safe_divide(relevance, zneg_neg)
 
             Cpos_pos = pos_inp * torch.autograd.grad(zpos_pos, pos_inp, Spos_pos)[0]
             Cpos_neg = neg_inp * torch.autograd.grad(zpos_neg, neg_inp, Spos_neg)[0]
@@ -177,9 +176,7 @@ class LRPZbRule(LRPRule):
             z -= LRPRule._modify_layer(module, lambda p: p.clamp(min=0)).forward_orig(lb)  # - lb * w+
             z -= LRPRule._modify_layer(module, lambda p: p.clamp(max=0)).forward_orig(ub)  # - ub * w-
 
-            z = z + (z == 0) * EPSILON  # for numerical stability
-
-            s = (relevance / z).data  # step 2
+            s = safe_divide(relevance, z).data  # step 2
             (z * s).sum().backward()  # step 3
             c, cp, cm = inp.grad, lb.grad, ub.grad
             return inp * c + lb * cp + ub * cm  # step 4
