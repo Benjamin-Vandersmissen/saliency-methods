@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from .base import SaliencyMethod
-from .utils import EPSILON
+from .utils import safe_divide
 from .mask import Mask, MeanMask
 __all__ = ['Gradient', 'GradientXInput', 'IntegratedGradients', 'FullGradient', 'GuidedBackProp']
 
@@ -164,8 +164,7 @@ class FullGradient(Gradient):
         gradient -= gradient.amin(dim=(2, 3), keepdim=True)
         # Use small epsilon for numerical stability
         denominator = gradient.amax(dim=(2, 3), keepdim=True)
-        denominator[denominator == 0] = torch.FloatTensor([EPSILON])
-        gradient /= denominator
+        gradient = safe_divide(gradient, denominator)
 
         # Resize to the correct size.
         gradient = F.interpolate(gradient, shape[2:], mode='bilinear', align_corners=True)
