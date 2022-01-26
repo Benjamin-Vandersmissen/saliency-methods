@@ -55,7 +55,7 @@ def relevance_mass(saliency, masks):
     return relevant / total
 
 
-def average_drop_confidence_increase(saliency, net, images, labels):
+def average_drop_confidence_increase(saliency, net, images, labels, threshold=None):
     """
     :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
     :param net: The neural network trained on the images and labels
@@ -70,12 +70,16 @@ def average_drop_confidence_increase(saliency, net, images, labels):
 
         images = images.to(device)
         labels = labels.view((batch_size, -1)).to(device, dtype=torch.long)
+        if threshold is not None:
+            saliency = saliency.copy()
+            saliency[saliency >= threshold] = 1
+            saliency[saliency < threshold] = 0
         masked_images = images.detach().clone() * torch.tensor(saliency).to(device)
 
         score = torch.gather(softmax(net(images), dim=1), 1, labels).cpu()
         new_score = torch.gather(softmax(net(masked_images), dim=1), 1, labels).cpu()
 
-        drop = (score-new_score)/score
+        drop = torch.maximum(torch.zeros_like(score), (score-new_score))/score
         confidence_increase = new_score > score
         return drop.numpy(), confidence_increase
 
@@ -175,10 +179,10 @@ def area_over_MoRF_curve(saliency, net, images, labels, nr_steps=100,  blur=Unif
     saliency_importance = torch.tensor(importance(saliency))
 
     original = images.clone()
-    original_scores = torch.gather(net(original.to(device)), 1, labels.to(device)).cpu()
-    new_scores = torch.zeros_like(original_scores)
+    original_scores = torch.gather(torch.softmax(net(original.to(device)), 1), 1, labels.to(device)).cpu()
+    scores = torch.zeros((batch_size, average_over, nr_steps+1))
     for j in range(batch_size):
-        for _ in range(average_over):
+        for k in range(average_over):
             occluded = torch.zeros(original.shape[2:])
             idx = 0
             img = images[j].clone().to(device)
@@ -201,7 +205,6 @@ def area_over_MoRF_curve(saliency, net, images, labels, nr_steps=100,  blur=Unif
                 occluded_patch = blur.mask(original, (img.shape[0], right-left+1, bottom-top+1)).to(device)
                 img[:, left:right+1, top:bottom+1] = occluded_patch
                 idx += 1
-                new_scores[j] += original_scores[j] - net(img.unsqueeze(0)).cpu()[0, labels[j]]
-            new_scores[j] /= nr_steps + 1
-        new_scores[j] /= average_over
-    return new_scores.numpy()
+                scores[j, k, i] = original_scores[j] - torch.softmax(net(img.unsqueeze(0)), 1).cpu()[0, labels[j]]
+
+    return scores.mean(dim=1).detach().numpy()
