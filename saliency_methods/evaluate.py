@@ -84,11 +84,12 @@ def average_drop_confidence_increase(saliency, net, images, labels, threshold=No
         return drop.numpy(), confidence_increase
 
 
-def _ins_del_parent(saliency, net, start, end, labels, nr_steps=100, minibatch_size=-1):
+def _ins_del_pixel(saliency, net, start, end, labels, nr_steps, minibatch_size):
     """
     :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
     :param net: The neural network trained on the images and labels
-    :param images: the images to occlude, this should match on each index with the corresponding label and saliency map.
+    :param start: The start batch of images
+    :param end: The batch of desired images
     :param labels: the correct labels, this should match on each index with the corresponding image and saliency map.
     :param nr_steps: In how many steps do we delete the image, more steps is slower but generates a more accurate curve.
     :param minibatch_size: How many images to process at once, (-1 = all images at once).
@@ -130,20 +131,83 @@ def _ins_del_parent(saliency, net, start, end, labels, nr_steps=100, minibatch_s
     return all_scores
 
 
-def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1):
+def _ins_del_region(saliency, net, start, end, labels, nr_steps, minibatch_size, region_shape):
     """
-    :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
-    :param net: The neural network trained on the images and labels
-    :param images: the images to occlude, this should match on each index with the corresponding label and saliency map.
-    :param labels: the correct labels, this should match on each index with the corresponding image and saliency map.
-    :param nr_steps: In how many steps do we delete the image, more steps is slower but generates a more accurate curve.
-    :param minibatch_size: How many images to process at once, (-1 = all images at once).
-    :return: An array representing the scores of the deleted images at each step in the process .
-    """
-    return _ins_del_parent(saliency, net, images, FullMask(0).mask(images), labels, nr_steps, minibatch_size)
+        :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
+        :param net: The neural network trained on the images and labels
+        :param start: The start batch of images
+        :param end: The batch of desired images
+        :param labels: the correct labels, this should match on each index with the corresponding image and saliency map.
+        :param nr_steps: In how many steps do we delete the image, more steps is slower but generates a more accurate curve.
+        :param minibatch_size: How many images to process at once, (-1 = all images at once).
+        :return: An array representing the scores of the deleted images at each step in the process .
+        """
+
+    batch_size = start.shape[0]
+
+    if nr_steps == -1:
+        nr_steps = start[0].numel()
+        if batch_size > 1:
+            raise Exception("A variable amount of steps is not supported for a batch of more than one image."
+                            "This is due to the fact images can have a different number of steps in this configuration "
+                            "and that variable length arrays cannot exist.")
+
+    if minibatch_size == -1:
+        minibatch_size = batch_size
+
+    device = next(net.parameters()).device
+    net = net.eval()
+    labels = labels.view((batch_size, -1)).to(device)
+
+    #  Return the indices in the saliency maps ordered by importance.
+    saliency_importance = torch.tensor(importance(saliency))
+
+    all_scores = np.ndarray((batch_size, nr_steps + 1))
+    with torch.no_grad():
+        for i in range(math.ceil(batch_size / minibatch_size)):
+            minibatch_index = minibatch_size * i
+            minibatch_end = minibatch_index + minibatch_size
+            batch_start = start[minibatch_index:minibatch_end].to(device)
+            batch_end = end[minibatch_index:minibatch_end].to(device)
+            batch_labels = labels[minibatch_index:minibatch_end].to(device)
+            batch_saliency_importance = saliency_importance[minibatch_index:minibatch_end]
+
+            for k in range(minibatch_size):
+                pixel_idx = 0
+                shape = start.shape[2:]
+                occluded = torch.zeros(shape)
+                for j in range(nr_steps + 1):
+                    scores = torch.gather(softmax(net(batch_start[k].unsqueeze(0)), 1), 1, batch_labels).squeeze()
+                    all_scores[minibatch_index+k, j] = scores.detach().cpu().numpy()
+
+                    x = batch_saliency_importance[k, 0, pixel_idx].item()
+                    y = batch_saliency_importance[k, 1, pixel_idx].item()
+
+                    while occluded[x, y]:  # This pixel has already been occluded.
+                        pixel_idx += 1
+                        x = batch_saliency_importance[k, 0, pixel_idx].item()
+                        y = batch_saliency_importance[k, 1, pixel_idx].item()
+
+                    left = max(x - region_shape[0] // 2, 0)
+                    right = min(x + (region_shape[0] - 1) // 2, shape[0] - 1)
+                    top = max(y - region_shape[1] // 2, 0)
+                    bottom = min(y + (region_shape[1] - 1) // 2, shape[1] - 1)
+
+                    occluded[left:right + 1, top:bottom + 1] = 1
+                    batch_start[k, :, left:right + 1, top:bottom + 1] = batch_end[k, :, left:right + 1, top:bottom + 1]
+
+                    if occluded.sum() == occluded.numel():
+                        all_scores = all_scores[:, :j+1]
+                        break
+
+                    if j == nr_steps:
+                        break
+
+    return all_scores
 
 
-def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blur=BlurredMask(11, 5)):
+def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blur=FullMask(0),
+             use_region=False, region_shape=(9,9)):
     """
     :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
     :param net: The neural network trained on the images and labels
@@ -152,59 +216,31 @@ def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, bl
     :param nr_steps: In how many steps do we delete the image, more steps is slower but generates a more accurate curve.
     :param minibatch_size: How many images to process at once, (-1 = all images at once).
     :param blur: Which method do we use to create an empty image.
+    :param use_region: Whether to delete a region of connected pixels around the most relevant pixel,
+    or only the most relevant pixel.
+    :param region_shape: The shape of the region to delete.
     :return: An array representing the scores of the deleted images at each step in the process .
     """
-    return _ins_del_parent(saliency, net, blur.mask(images), images, labels, nr_steps, minibatch_size)
+    if use_region:
+        return _ins_del_region(saliency, net, images, blur.mask(images), labels, nr_steps, minibatch_size, region_shape)
+    return _ins_del_pixel(saliency, net, images, blur.mask(images), labels, nr_steps, minibatch_size)
 
 
-def area_over_MoRF_curve(saliency, net, images, labels, nr_steps=100,  blur=UniformMask(), shape=(9, 9), average_over=1):
+def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blur=BlurredMask(11, 5),
+              use_region=False, region_shape=(9,9)):
     """
     :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
     :param net: The neural network trained on the images and labels
     :param images: the images to occlude, this should match on each index with the corresponding label and saliency map.
     :param labels: the correct labels, this should match on each index with the corresponding image and saliency map.
     :param nr_steps: In how many steps do we delete the image, more steps is slower but generates a more accurate curve.
-    :param blur: Which method do we use to create a mask.
-    :param shape: The shape of the occlusion patch
-    :param average_over: How many iterations do we do for each image.
-    :return: An array representing the AOPC scores .
+    :param minibatch_size: How many images to process at once, (-1 = all images at once).
+    :param blur: Which method do we use to create an empty image.
+    :param use_region: Whether to insert a region of connected pixels around the most relevant pixel,
+    or only the most relevant pixel.
+    :param region_shape: The shape of the region to insert.
+    :return: An array representing the scores of the deleted images at each step in the process .
     """
-    batch_size = images.shape[0]
-
-    device = next(net.parameters()).device
-    net = net.eval()
-    labels = labels.view((batch_size, -1))
-
-    #  Return the indices in the saliency maps ordered by importance.
-    saliency_importance = torch.tensor(importance(saliency))
-
-    original = images.clone()
-    original_scores = torch.gather(torch.softmax(net(original.to(device)), 1), 1, labels.to(device)).cpu()
-    scores = torch.zeros((batch_size, average_over, nr_steps+1))
-    for j in range(batch_size):
-        for k in range(average_over):
-            occluded = torch.zeros(original.shape[2:])
-            idx = 0
-            img = images[j].clone().to(device)
-            for i in range(nr_steps+1):
-                x = saliency_importance[j, 0, idx].item()
-                y = saliency_importance[j, 1, idx].item()
-
-                while occluded[x, y]:  # This pixel has already been occluded.
-                    idx += 1
-                    x = saliency_importance[j, 0, idx].item()
-                    y = saliency_importance[j, 1, idx].item()
-
-                # Calculate the actual positions of the window (in case of cut-off)
-                left = max(x - shape[0]//2, 0)
-                right = min(x + (shape[0]-1)//2, original.shape[2]-1)
-                top = max(y - shape[1]//2, 0)
-                bottom = min(y + (shape[1]-1)//2, original.shape[3]-1)
-
-                occluded[left:right+1, top:bottom+1] = 1
-                occluded_patch = blur.mask(original, (img.shape[0], right-left+1, bottom-top+1)).to(device)
-                img[:, left:right+1, top:bottom+1] = occluded_patch
-                idx += 1
-                scores[j, k, i] = original_scores[j] - torch.softmax(net(img.unsqueeze(0)), 1).cpu()[0, labels[j]]
-
-    return scores.mean(dim=1).detach().numpy()
+    if use_region:
+        return _ins_del_region(saliency, net, blur.mask(images), images, labels, nr_steps, minibatch_size, region_shape)
+    return _ins_del_pixel(saliency, net, blur.mask(images), images, labels, nr_steps, minibatch_size)
