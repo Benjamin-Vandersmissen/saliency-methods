@@ -86,7 +86,7 @@ class SaliencyMethod(ABC):
             saliency = np.maximum(0, saliency)
 
         if pixel_level:
-            saliency = saliency.mean(axis=1)
+            saliency = saliency.mean(axis=1, keepdims=True)
 
         if normalize:
             saliency = SaliencyMethod._normalize(saliency)
