@@ -133,24 +133,17 @@ def _ins_del_pixel(saliency, net, start, end, labels, nr_steps, minibatch_size):
 
 def _ins_del_region(saliency, net, start, end, labels, nr_steps, minibatch_size, region_shape):
     """
-        :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
-        :param net: The neural network trained on the images and labels
-        :param start: The start batch of images
-        :param end: The batch of desired images
-        :param labels: the correct labels, this should match on each index with the corresponding image and saliency map.
-        :param nr_steps: In how many steps do we delete the image, more steps is slower but generates a more accurate curve.
-        :param minibatch_size: How many images to process at once, (-1 = all images at once).
-        :return: An array representing the scores of the deleted images at each step in the process .
-        """
+    :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
+    :param net: The neural network trained on the images and labels
+    :param start: The start batch of images
+    :param end: The batch of desired images
+    :param labels: the correct labels, this should match on each index with the corresponding image and saliency map.
+    :param nr_steps: In how many steps do we delete the image, more steps is slower but generates a more accurate curve.
+    :param minibatch_size: How many images to process at once, (-1 = all images at once).
+    :return: An array representing the scores of the deleted images at each step in the process .
+    """
 
     batch_size = start.shape[0]
-
-    if nr_steps == -1:
-        nr_steps = start[0].numel()
-        if batch_size > 1:
-            raise Exception("A variable amount of steps is not supported for a batch of more than one image."
-                            "This is due to the fact images can have a different number of steps in this configuration "
-                            "and that variable length arrays cannot exist.")
 
     if minibatch_size == -1:
         minibatch_size = batch_size
@@ -176,9 +169,15 @@ def _ins_del_region(saliency, net, start, end, labels, nr_steps, minibatch_size,
                 pixel_idx = 0
                 shape = start.shape[2:]
                 occluded = torch.zeros(shape)
-                for j in range(nr_steps + 1):
-                    scores = torch.gather(softmax(net(batch_start[k].unsqueeze(0)), 1), 1, batch_labels).squeeze()
-                    all_scores[minibatch_index+k, j] = scores.detach().cpu().numpy()
+                j = 0
+                while True:
+                    if occluded.sum() >= j * occluded.numel()/nr_steps:  # Do forward step 'j'
+                        scores = torch.gather(softmax(net(batch_start[k].unsqueeze(0)), 1), 1, batch_labels).squeeze()
+                        all_scores[minibatch_index+k, j] = scores.detach().cpu().numpy()
+                        j += 1
+
+                    if j > nr_steps:
+                        break
 
                     x = batch_saliency_importance[k, 0, pixel_idx].item()
                     y = batch_saliency_importance[k, 1, pixel_idx].item()
@@ -195,13 +194,6 @@ def _ins_del_region(saliency, net, start, end, labels, nr_steps, minibatch_size,
 
                     occluded[left:right + 1, top:bottom + 1] = 1
                     batch_start[k, :, left:right + 1, top:bottom + 1] = batch_end[k, :, left:right + 1, top:bottom + 1]
-
-                    if occluded.sum() == occluded.numel():
-                        all_scores = all_scores[:, :j+1]
-                        break
-
-                    if j == nr_steps:
-                        break
 
     return all_scores
 
