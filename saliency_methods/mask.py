@@ -21,6 +21,9 @@ class Mask(ABC):
     def mask(self, in_values, shape=None):
         raise NotImplementedError("This method needs to be implemented in a subclass.")
 
+    def __call__(self, in_values, shape):
+        return self.mask(in_values, shape)
+
 
 class FullMask(Mask):
     def __init__(self, fill_value):

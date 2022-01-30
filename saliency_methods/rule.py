@@ -163,6 +163,8 @@ class LRPZbRule(LRPRule):
 
     @staticmethod
     def relevance_func(inp, relevance, module, lower=-torch.ones((1,3,1,1)), upper=torch.ones((1, 3, 1, 1))):
+        upper = upper.to(inp.device)
+        lower = lower.to(inp.device)
         with torch.enable_grad():
             inp.requires_grad_(True)
 

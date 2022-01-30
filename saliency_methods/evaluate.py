@@ -172,7 +172,7 @@ def _ins_del_region(saliency, net, start, end, labels, nr_steps, minibatch_size,
                 j = 0
                 while True:
                     if occluded.sum() >= j * occluded.numel()/nr_steps:  # Do forward step 'j'
-                        scores = torch.gather(softmax(net(batch_start[k].unsqueeze(0)), 1), 1, batch_labels).squeeze()
+                        scores = torch.gather(softmax(net(batch_start[k].unsqueeze(0)), 1), 1, batch_labels[k]).squeeze()
                         all_scores[minibatch_index+k, j] = scores.detach().cpu().numpy()
                         j += 1
 

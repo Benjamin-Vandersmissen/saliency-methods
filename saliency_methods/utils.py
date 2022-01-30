@@ -3,11 +3,15 @@ import torch.nn as nn
 import numpy as np
 
 
+EPSILON = np.finfo(np.float32).eps
+
+
 def safe_divide(a, b):
-    eps = np.finfo(np.float32).eps
-    if isinstance(a, torch.Tensor):
-        eps = torch.FloatTensor([eps])
-    b[b == 0] = eps
+    with torch.no_grad():
+        eps = np.finfo(np.float32).eps
+        if isinstance(a, torch.Tensor):
+            eps = torch.FloatTensor([eps])
+        b[b == 0] = eps
     return a / b
 
 
