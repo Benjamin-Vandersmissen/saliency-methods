@@ -5,7 +5,7 @@ import numpy as np
 
 from .base import SaliencyMethod
 from .utils import safe_divide
-from .mask import Mask, MeanMask
+from .baseline import Baseline, MeanBaseline
 __all__ = ['Gradient', 'GradientXInput', 'IntegratedGradients', 'FullGradient', 'GuidedBackProp']
 
 
@@ -80,7 +80,7 @@ class IntegratedGradients(Gradient):
     Axiomatic Attribution for Deep Networks (Sundararajan et al. 2017)
     """
 
-    def __init__(self, net: nn.Module,  baseline: Mask = MeanMask(), nr_steps=50, **kwargs):
+    def __init__(self, net: nn.Module, baseline: Baseline = MeanBaseline(), nr_steps=50, **kwargs):
         """
         Initialize a Integrated Gradients Saliency Method object.
         :param net: The neural network to use.
@@ -98,7 +98,7 @@ class IntegratedGradients(Gradient):
         :param in_values: A batch of images.
         :return: A batch of baselines, corresponding to the batch of images.
         """
-        baseline = self.baseline.mask(in_values, in_values.shape)
+        baseline = self.baseline.get(in_values, in_values.shape)
 
         return baseline
 

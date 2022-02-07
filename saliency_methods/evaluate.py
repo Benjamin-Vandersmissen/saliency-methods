@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch.nn.functional import softmax
 from .utils import importance
-from .mask import BlurredMask, FullMask, UniformMask
+from .baseline import BlurredBaseline, FullBaseline, UniformBaseline
 
 
 def intersection_over_union(saliency, masks):
@@ -172,7 +172,7 @@ def _ins_del_region(saliency, net, start, end, labels, nr_steps, minibatch_size,
                 j = 0
                 while True:
                     if occluded.sum() >= j * occluded.numel()/nr_steps:  # Do forward step 'j'
-                        scores = torch.gather(softmax(net(batch_start[k].unsqueeze(0)), 1), 1, batch_labels[k]).squeeze()
+                        scores = torch.gather(softmax(net(batch_start[k].unsqueeze(0)), 1), 1, batch_labels[k].unsqueeze(0)).squeeze()
                         all_scores[minibatch_index+k, j] = scores.detach().cpu().numpy()
                         j += 1
 
@@ -198,7 +198,7 @@ def _ins_del_region(saliency, net, start, end, labels, nr_steps, minibatch_size,
     return all_scores
 
 
-def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blur=FullMask(0),
+def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blur=FullBaseline(0),
              use_region=False, region_shape=(9,9)):
     """
     :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
@@ -214,11 +214,11 @@ def deletion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blu
     :return: An array representing the scores of the deleted images at each step in the process .
     """
     if use_region:
-        return _ins_del_region(saliency, net, images, blur.mask(images), labels, nr_steps, minibatch_size, region_shape)
-    return _ins_del_pixel(saliency, net, images, blur.mask(images), labels, nr_steps, minibatch_size)
+        return _ins_del_region(saliency, net, images, blur.get(images), labels, nr_steps, minibatch_size, region_shape)
+    return _ins_del_pixel(saliency, net, images, blur.get(images), labels, nr_steps, minibatch_size)
 
 
-def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blur=BlurredMask(11, 5),
+def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, blur=BlurredBaseline(11, 5),
               use_region=False, region_shape=(9,9)):
     """
     :param saliency: a 4D numpy.ndarray representing a batch of saliency maps
@@ -234,5 +234,5 @@ def insertion(saliency, net, images, labels, nr_steps=100, minibatch_size=-1, bl
     :return: An array representing the scores of the deleted images at each step in the process .
     """
     if use_region:
-        return _ins_del_region(saliency, net, blur.mask(images), images, labels, nr_steps, minibatch_size, region_shape)
-    return _ins_del_pixel(saliency, net, blur.mask(images), images, labels, nr_steps, minibatch_size)
+        return _ins_del_region(saliency, net, blur.get(images), images, labels, nr_steps, minibatch_size, region_shape)
+    return _ins_del_pixel(saliency, net, blur.get(images), images, labels, nr_steps, minibatch_size)

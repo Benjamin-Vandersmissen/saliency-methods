@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from .base import SaliencyMethod
 from .gradient import Gradient
 from .rule import *
-from .mask import Mask, FullMask
+from .baseline import Baseline, FullBaseline
 from .utils import safe_divide
 __all__ = ['LRP']
 
@@ -64,7 +64,7 @@ class DeepLift(SaliencyMethod):
     """
     Learning Important Features Through Propagating Activation Differences (Shrikumar et al. 2017)
     """
-    def __init__(self, net: nn.Module, baseline_fn: Mask = FullMask(0), **kwargs):
+    def __init__(self, net: nn.Module, baseline_fn: Baseline = FullBaseline(0), **kwargs):
         super(DeepLift, self).__init__(net, **kwargs)
         self.baseline_fn = baseline_fn
         self.backward_hooks = []
@@ -237,7 +237,7 @@ class DeepLift(SaliencyMethod):
 
     def _explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
 
-        self.calculate_reference_activations(self.baseline_fn.mask(in_values))
+        self.calculate_reference_activations(self.baseline_fn.get(in_values))
         in_values.requires_grad_(True)
         out_values = self.calculate_diff_from_reference(in_values)
         grad_out = torch.scatter(torch.zeros_like(out_values), 1, labels, torch.gather(out_values, 1, labels))

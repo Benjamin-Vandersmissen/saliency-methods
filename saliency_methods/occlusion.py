@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from .base import SaliencyMethod
-from .mask import Mask, FullMask
+from .baseline import Baseline, FullBaseline
 
 __all__ = ['Occlusion']
 
@@ -16,7 +16,7 @@ class Occlusion(SaliencyMethod):
     Visualizing and Understanding Convolutional Networks (Zeiler et al. 2014)
     """
 
-    def __init__(self, net: nn.Module, mgf: Mask = FullMask(0), occlusion_size=(8, 8), stride=-1, **kwargs):
+    def __init__(self, net: nn.Module, mgf: Baseline = FullBaseline(0), occlusion_size=(8, 8), stride=-1, **kwargs):
         """
         Initialize a new Occlusion Saliency Method object.
         :param net: The neural network to use.
@@ -37,7 +37,7 @@ class Occlusion(SaliencyMethod):
         batch_size = in_values.shape[0]
         channels = in_values.shape[1]
 
-        occlusion_window = self.mgf.mask(in_values, (batch_size, channels, *self.occlusion_size))
+        occlusion_window = self.mgf.get(in_values, (batch_size, channels, *self.occlusion_size))
 
         in_shape = in_values.shape[2:]  # Don't count batch & channels
         occlusion_shape = occlusion_window.shape[2:]
