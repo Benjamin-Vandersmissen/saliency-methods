@@ -87,7 +87,7 @@ class NoisyMeanMask(NoiseMixin, MeanBaseline):
 
 class BlurredBaseline(Baseline):
     """A baseline where the image is blurred using a Gaussian kernel"""
-    def __init__(self, kernel_size=3, sigma=(0.1, 2)):
+    def __init__(self, kernel_size=11, sigma=5):
         super(BlurredBaseline, self).__init__()
         self.blur = GaussianBlur(kernel_size, sigma)
 
