@@ -95,13 +95,15 @@ This repository also contains two composite methods, these are methods that are 
 The following methods are implemented:
 
 - Smoothing using Gaussian noise (Smilkov2017)
+- Smoothing using the Variance (Adebayo2018) 
 - Elementwise multiplication with Guided BackPropagation (Springenberg2014, Selvaraju2017)
 
-| | Vgg-16 | ResNet-50 | 
-|-------|-------|------|
-| Gradient| ![](./images/grad_vgg.png) | ![](./images/grad_resnet.png)|
-| Gradient (+smoothing) | ![](./images/smoothgrad_vgg.png) | ![](./images/smoothgrad_resnet.png)|
-| Grad-CAM | ![](./images/gradcam_vgg.png) | ![](./images/gradcam_resnet.png)|
+| | Vgg-16 | ResNet-50                               | 
+|-------|-------|-----------------------------------------|
+| Gradient| ![](./images/grad_vgg.png) | ![](./images/grad_resnet.png)           |
+| Gradient (+smoothing) | ![](./images/smoothgrad_vgg.png) | ![](./images/smoothgrad_resnet.png)     |
+ | Gradient (+ Variance smoothing | ![](./images/vargrad_vgg.png) | ![](./images/vargrad_resnet.png)        |
+| Grad-CAM | ![](./images/gradcam_vgg.png) | ![](./images/gradcam_resnet.png)        |
 | Guided Grad-CAM | ![](./images/guided_gradcam_vgg.png) | ![](./images/guided_gradcam_resnet.png) |
 
 ## Additional tools:
@@ -111,6 +113,8 @@ This repository contains implementations of a number of different commonly used 
 TODO: more info!
 
 ## References
+(Adebayo2018) Local Explanation Methods for Deep Neural Networks lack Sensitivity to Parameter Values, Adebayo et al. 2018
+
 (Bach2015) On pixel-wise explanations for non-linear classifier decisions by layer-wise relevance propagation, Bach et al. 2015
 
 (Chattopadhyay2017) Grad-CAM++: Improved Visual Explanations for Deep Convolutional Networks, Chattopadhyay et al. 2017

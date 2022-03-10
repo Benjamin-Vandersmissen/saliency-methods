@@ -3,7 +3,7 @@ import torch
 from .base import CompositeSaliencyMethod, SaliencyMethod
 from .gradient import GuidedBackProp
 
-__all__ = ["Smooth", "Guided"]
+__all__ = ["Smooth", "Var", "Guided"]
 
 
 class Smooth(CompositeSaliencyMethod):
@@ -71,6 +71,55 @@ class Smooth(CompositeSaliencyMethod):
             saliency += self.method.explain(noisy_input, labels)
         saliency /= self.smooth_rate
         return saliency
+
+
+class Var(CompositeSaliencyMethod):
+    """
+    Local Explanation Methods for Deep Neural Networks lack Sensitivity to Parameter Values (Adebayo et al. 2018)
+    """
+
+    def __init__(self, method: SaliencyMethod, smooth_rate=10, noise_function=Smooth.gaussian_noise):
+        """
+        Initialize a new Var object.
+        :param method: The saliency method to apply smoothing to.
+        :param smooth_rate: How many noisy inputs to generate.
+        :param noise_function: The function to generate noisy input values.
+        """
+        super().__init__(method)
+
+        self.smooth_rate = smooth_rate
+        self.method = method
+        self.noise_func = noise_function
+
+    def _explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+        """ Smoothens a saliency method of the input w.r.t. the desired label using the variance.
+
+        Parameters
+        ----------
+
+        in_values : 4D-tensor of shape (batch, channel, width, height)
+            A batch of images we want to generate saliency maps for.
+
+        labels : 1D-tensor containing *batch* elements.
+            The labels for the images we want to explain for.
+
+        Returns
+        -------
+
+        4D-numpy.ndarray
+            A batch of saliency maps for the images and labels provided.
+
+        """
+        saliency = np.zeros_like(in_values)
+        saliency_sq = np.zeros_like(in_values)
+        for i in range(self.smooth_rate):
+            noisy_input = self.noise_func(in_values.clone())
+            temp_saliency = self.method.explain(noisy_input, labels)
+            saliency += temp_saliency
+            saliency_sq += np.power(temp_saliency, 2)
+        saliency /= self.smooth_rate  # Expected saliency
+        saliency_sq /= self.smooth_rate  # sum of squared saliency * p
+        return saliency_sq - np.power(saliency, 2)  # variance of saliency
 
 
 class Guided(CompositeSaliencyMethod):
