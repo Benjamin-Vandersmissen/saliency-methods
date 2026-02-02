@@ -50,6 +50,25 @@ def extract_layers(net: nn.Module, shape: tuple) -> list:
 
     return layers
 
+def resolve_layer(net: nn.Module, layer: str):
+    """ Return the handle for a pytorch layer in a given net.
+        
+    
+    :param net: torch.nn.Module
+    :param layer: str
+    :return: torch.nn.Module
+    """
+    if '.' not in layer:
+        if layer.isnumeric():
+            return net[int(layer)]
+        else:
+            return getattr(net, layer)
+    else:
+        prefix, rest = layer.split('.', maxsplit=1)
+        if prefix.isnumeric():
+            return resolve_layer(net[int(prefix)], rest)
+        else:
+            return resolve_layer(getattr(net, prefix), rest)
 
 def importance(heatmaps):
     shape = heatmaps.shape[2:]

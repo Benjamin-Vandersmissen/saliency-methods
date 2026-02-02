@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import sys
 
 from .base import SaliencyMethod
-from .utils import extract_layers, safe_divide
+from .utils import extract_layers, safe_divide, resolve_layer
 
 __all__ = ["_CAM", "CAM", "GradCAM", "ScoreCAM", "GradCAMpp", "AblationCAM", "XGradCAM"]
 
@@ -14,53 +14,40 @@ class _CAM(SaliencyMethod):
     """
     A base class for CAM based methods
     """
-    def __init__(self, net: nn.Module, resize: bool = True, conv_layer_idx=-1, before_layer=False, **kwargs):
+    def __init__(self, net: nn.Module, resize: bool = True, target_layer=None, **kwargs):
         """
         Initialize a CAM based saliency method object.
         :param net: The neural network model to use.
         :param resize: Whether to resize the resulting saliency map using bi-linear interpolation
-        :param normalise: Whether to normalize the map to the [0,1] range
-        :param conv_layer_idx: The convolutional layer to hook (either by index or name)
-        :param before_layer: Whether to consider inputs and gradients from just before the layer or outputs and
-                             gradients after the layer. This is primarily used in ResNet architectures where there is no
-                             handy conv layer at the end to extract feature maps&gradients, so instead one can use the
-                             inputs and gradients just before the AdaptiveAvgPool layer.
+        :param target_layer: The layer to hook. (if not given, resolves to the last convolutional layer)
         :param kwargs: Other arguments.
         """
         super().__init__(net, **kwargs)
         self.resize = resize
-        self.conv_layer = None
+        self.target_layer = target_layer
         self.activation_hook = []
         self.conv_out = []
-        self.before_layer = before_layer
-        self.conv_layer_idx = conv_layer_idx
+                
 
-    def _find_conv_layer(self, layers):
-        """ Find the given convolutional layer for calculating the activation maps."""
+    def _find_target_layer(self, layers):
+        """ Find the given layer for calculating the activation maps."""
 
-        if isinstance(self.conv_layer_idx, str):
-            for name, layer in layers[::-1]:
-                if name == self.conv_layer_idx:
-                    self.conv_layer = layer
-                    break
-            else:
-                raise Exception("No layer was found with name : " + self.conv_layer_idx)
+        if isinstance(self.target_layer, str):  # Select a layer by name
+            try:
+                return resolve_layer(self.net, self.target_layer)
+            except ValueError:
+                raise Exception("No layer was found with name : " + self.target_layer)
 
-        else:
-            conv_layers = [layer for name, layer in layers if isinstance(layer, nn.Conv2d)]
-            if self.conv_layer_idx >= len(conv_layers) or -self.conv_layer_idx > len(conv_layers):
-                raise Exception("The provided index for the convolutional layers is out of bound (%s / %s)" %
-                                (self.conv_layer_idx, len(conv_layers)))
-            self.conv_layer = conv_layers[self.conv_layer_idx]
+        else:  # Select the last convolutional layer
+            return [layer for name, layer in layers if isinstance(layer, nn.Conv2d)][-1]
+            
 
-    def _hook_conv_layer(self, layer):
+    def _hook_target_layer(self, layer):
         """Hook the last convolutional layer to find its output activations."""
 
         def _conv_hook(_, inp, outp):
-            if self.before_layer:
-                self.conv_out.append(inp[0])
-            else:
-                self.conv_out.append(outp)
+            self.conv_out.append(outp)
+        
         self.activation_hook.append(layer.register_forward_hook(_conv_hook))
 
     def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
@@ -100,12 +87,13 @@ class _CAM(SaliencyMethod):
         return saliency
 
     def _init_hooks(self, in_values):
-        if self.conv_layer is None:
+        if type(self.target_layer) != torch.nn.Module:
             layers = extract_layers(self.net, in_values.shape)
-            self._find_conv_layer(layers)
-            self._hook_conv_layer(self.conv_layer)
+            self.target_layer = self._find_target_layer(layers)
+        
+        self._hook_target_layer(self.target_layer)
 
-    def explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+    def explain(self, in_values: torch.Tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate Class Activation Mapping for the given input.
 
         Parameters
@@ -129,7 +117,7 @@ class _CAM(SaliencyMethod):
 
         return super().explain(in_values, labels, out=out, **kwargs)
 
-    def explain_prediction(self, in_values: torch.tensor, **kwargs) -> np.ndarray:
+    def explain_prediction(self, in_values: torch.Tensor, **kwargs) -> np.ndarray:
         """ Calculate CAM saliency maps for a given input, based on the top-predicted labels.
 
             Parameters
@@ -158,10 +146,9 @@ class CAM(_CAM):
         :param kwargs: Other arguments.
         """
         super().__init__(net, **kwargs)
-        if self.conv_layer_idx != -1:
+        last_conv_check = False  # TODO: replace this dummy check with an actual check!
+        if last_conv_check:
             print("CAM only works with the last convolutional layer.", file=sys.stderr)
-            print("Automatically switching to the last convolutional layer.", file=sys.stderr)
-            self.conv_layer_idx = -1
         self.fc_layer: nn.Linear = None
 
     def _find_fc_layer(self, layers):
@@ -194,8 +181,8 @@ class CAM(_CAM):
     def _init_hooks(self, in_values):
         if self.fc_layer is None:
             layers = extract_layers(self.net, in_values.shape)
-            self._find_conv_layer(layers)
-            self._hook_conv_layer(self.conv_layer)
+            self._find_target_layer(layers)
+            self._hook_target_layer(self.target_layer)
             self._find_fc_layer(layers)
 
 
@@ -214,16 +201,13 @@ class GradCAM(_CAM):
         self.grad_hook = []
         self.grad = []
 
-    def _hook_conv_layer(self, layer):
+    def _hook_target_layer(self, layer):
         """Hook the given convolutional layer to find its gradients."""
 
         def _grad_hook(_, inp, outp):
-            if self.before_layer:
-                self.grad.insert(0, inp[0])  # insert at front (because gradients is in reverse order as activations)
-            else:
                 self.grad.insert(0, outp[0])
         self.grad_hook.append(layer.register_backward_hook(_grad_hook))
-        super(GradCAM, self)._hook_conv_layer(layer)
+        super(GradCAM, self)._hook_target_layer(layer)
 
     def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
         """ Get the weights used for the CAM calculations
@@ -361,7 +345,7 @@ class ScoreCAM(_CAM):
                                            self.base_score[labels[i]]).squeeze()
 
         # Re-enable hook as we are finished with it.
-        self._hook_conv_layer(self.conv_layer)
+        self._hook_target_layer(self.conv_layer)
 
         scores = F.softmax(scores, dim=1)
         return scores.reshape((batch_size, conv_channels, 1, 1))
@@ -501,7 +485,7 @@ class AblationCAM(_CAM):
                 self.conv_layer.weight[i, :, :, :] = current_weights[i, :, :, :]
 
         # Re-enable hook as we are finished with it.
-        self._hook_conv_layer(self.conv_layer)
+        self._hook_target_layer(self.conv_layer)
         return scores.reshape(batch_size, channels, 1, 1)
 
     def _explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
@@ -576,7 +560,7 @@ class ZoomCAM(GradCAM):
         layers = extract_layers(self.net, in_values.shape)
         for name, layer in layers:
             if isinstance(layer, nn.Conv2d):
-                self._hook_conv_layer(layer)
+                self._hook_target_layer(layer)
 
     def _explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """
