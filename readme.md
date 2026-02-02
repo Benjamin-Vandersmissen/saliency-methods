@@ -65,17 +65,19 @@ The following methods are implemented:
 - Axiom-based Grad-CAM (XGrad-CAM) (Fu2020)
 - Zoom-CAM (Shi2020)
 - Layer-CAM (Jiang2021)
+- HiResCAM (Draelos2021)
 
-| | VGG-16 | ResNet-50                            |
-|------|------|--------------------------------------|
-|CAM | Not Supported [^2] | Not Supported [^2]                   |
-|Grad-CAM| ![](./images/gradcam_vgg.png)| ![](./images/gradcam_resnet.png)     |
-|Score-CAM| ![](./images/scorecam_vgg.png)| ![](./images/scorecam_resnet.png)    |
-|Grad-CAM++| ![](./images/gradcampp_vgg.png)| ![](./images/gradcampp_resnet.png)   |
-|Ablation-CAM| ![](./images/ablationcam_vgg.png)| ![](./images/ablationcam_resnet.png) |
-|XGrad-CAM| ![](./images/xgradcam_vgg.png)| ![](./images/xgradcam_resnet.png)    |
-|Zoom-CAM| ![](./images/zoomcam_vgg.png)| ![](./images/zoomcam_resnet.png)     |
-|Layer-CAM|![](./images/layercam_vgg.png)| ![](./images/layercam_resnet.png)    |
+|              | VGG-16                            | ResNet-50                            |
+|--------------|-----------------------------------|--------------------------------------|
+| CAM          | Not Supported [^2]                | Not Supported [^2]                   |
+| Grad-CAM     | ![](./images/gradcam_vgg.png)     | ![](./images/gradcam_resnet.png)     |
+| Score-CAM    | ![](./images/scorecam_vgg.png)    | ![](./images/scorecam_resnet.png)    |
+| Grad-CAM++   | ![](./images/gradcampp_vgg.png)   | ![](./images/gradcampp_resnet.png)   |
+| Ablation-CAM | ![](./images/ablationcam_vgg.png) | ![](./images/ablationcam_resnet.png) |
+| XGrad-CAM    | ![](./images/xgradcam_vgg.png)    | ![](./images/xgradcam_resnet.png)    |
+| Zoom-CAM     | ![](./images/zoomcam_vgg.png)     | ![](./images/zoomcam_resnet.png)     |
+| Layer-CAM    | ![](./images/layercam_vgg.png)    | ![](./images/layercam_resnet.png)    |
+| HiResCAM     | ![](./images/hirescam_vgg.png)    | ![](./images/hirescam_resnet.png)    |
 [^2]: CAM needs a special layer architecture, with a Global Average Pooling layer directly after the last convolutional layer and before the linear layer to work.
 
 ### Backpropagation-based methods
@@ -122,6 +124,8 @@ TODO: more info!
 (Chattopadhyay2017) Grad-CAM++: Improved Visual Explanations for Deep Convolutional Networks, Chattopadhyay et al. 2017
 
 (Desai2020) Ablation-CAM: Visual Explanations for Deep Convolutional Network via Gradient-free Localization, Desai & Ramaswamy 2020
+
+(Draelos2021) Use HiResCAM instead of Grad-CAM for faithful explanations of convolutional neural networks, Draelos & Carin 2021
 
 (Fu2020) Axiom-based Grad-CAM: Towards Accurate Visualization and Explanation of CNNs, Fu et al. 2020
 

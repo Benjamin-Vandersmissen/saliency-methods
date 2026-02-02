@@ -627,3 +627,30 @@ class LayerCAM(_MultiCAMMixin, GradCAM):
 
             saliency = saliency + new_saliency
         return saliency
+    
+
+class HiResCAM(GradCAM):
+    """
+    Use HiResCAM instead of Grad-CAM for faithful explanations of convolutional neural networks. (Draelos et al. 2021)
+    """
+    def __init__(self, net, **kwargs):
+        super().__init__(net, **kwargs)
+    
+    def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
+        """ Get the weights used for the CAM calculations
+
+        Parameters
+        ----------
+
+        labels : 1D-tensor that contains the labels
+            The labels for which we want to calculate the weights.
+
+        Returns
+        -------
+
+        weights : 4D-tensor of shape (batch, channel, width, height)
+            The weights used in the linear combination of activation maps.
+
+        """
+        weights = self.grad.pop()
+        return weights
