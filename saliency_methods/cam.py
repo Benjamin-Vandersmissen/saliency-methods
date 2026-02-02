@@ -1,3 +1,5 @@
+from abc import abstractmethod
+
 import numpy as np
 import torch
 from torch import nn
@@ -535,14 +537,29 @@ class XGradCAM(GradCAM):
         return weights
 
 
-class ZoomCAM(GradCAM):
-    """
-    Zoom-CAM: Generating Fine-grained Pixel Annotations from Image Labels (Shi et al. 2020)
-    """
-    def __init__(self, net, **kwargs):
-        super().__init__(net, **kwargs)
-        self.resize = True  # This needs to be True as the intermediary CAM maps need to be scaled up for merging.
-
+class _MultiCAMMixin:
+    def __init__(self, net = None, target_layers=None, **kwargs):
+        self.target_layers = target_layers
+        self.net = None
+        self.grad = None
+        
+        if self.target_layers is None and 'target_layer' in kwargs:
+            print("""Parameter 'target_layer' is set, but as this method combines maps at multiple layers, this parameter is discarded.
+Please instead set the 'target_layers' parameter.
+As a fallback, the current output will be the aggregate of the maps of all Conv2d layers.""", file=sys.stderr)
+        if self.target_layers is not None:
+            assert type(self.target_layers) is list
+    
+    def _init_hooks(self, in_values):
+        if self.target_layers is not None:
+            for l in self.target_layers:
+                self._hook_target_layer(resolve_layer(self.net, l))
+        else:
+            layers = extract_layers(self.net, in_values.shape)
+            for name, layer in layers:
+                if isinstance(layer, nn.Conv2d):
+                    self._hook_target_layer(layer)
+                
     def _get_weights(self, labels: torch.Tensor) -> torch.Tensor:
         """ Get the weights used for the CAM calculations
 
@@ -561,12 +578,17 @@ class ZoomCAM(GradCAM):
         """
         # pop the last gradient to calculate the weights
         return self.grad.pop()
+    
 
-    def _init_hooks(self, in_values):
-        layers = extract_layers(self.net, in_values.shape)
-        for name, layer in layers:
-            if isinstance(layer, nn.Conv2d):
-                self._hook_target_layer(layer)
+class ZoomCAM(_MultiCAMMixin, GradCAM):
+    """
+    Zoom-CAM: Generating Fine-grained Pixel Annotations from Image Labels (Shi et al. 2020)
+    """
+    def __init__(self, net, **kwargs):
+        super().__init__(net, **kwargs)
+        super(_MultiCAMMixin, self).__init__(net, **kwargs)
+        self.resize = True  # This needs to be True as the intermediary CAM maps need to be scaled up for merging.
+
 
     def _explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         """
@@ -583,4 +605,25 @@ class ZoomCAM(GradCAM):
             new_saliency = self._normalize(new_saliency)
 
             saliency = np.maximum(saliency, new_saliency)
+        return saliency
+
+
+class LayerCAM(_MultiCAMMixin, GradCAM):
+    """
+    LayerCAM: Exploring Hierarchical Activation Maps for Localization (Jiang et al. 2021)
+    """
+    def __init__(self, net, **kwargs):
+        super().__init__(net, **kwargs)
+        super(_MultiCAMMixin, self).__init__(net, **kwargs)
+        self.resize = True  # This needs to be True as the intermediary CAM maps need to be scaled up for merging.
+
+    def _explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
+
+        saliency = np.zeros(in_values.shape)
+
+        while len(self.conv_out) > 0:
+            new_saliency = super(LayerCAM, self)._explain(in_values, labels, **kwargs)
+            new_saliency = self._postprocess(new_saliency, only_positive=True, pixel_level=True)
+
+            saliency = saliency + new_saliency
         return saliency

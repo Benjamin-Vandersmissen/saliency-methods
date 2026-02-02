@@ -64,16 +64,18 @@ The following methods are implemented:
 - Ablation-CAM (Desai2020)
 - Axiom-based Grad-CAM (XGrad-CAM) (Fu2020)
 - Zoom-CAM (Shi2020)
+- Layer-CAM (Jiang2021)
 
-| | VGG-16 | ResNet-50 |
-|------|------|--------|
-|CAM | Not Supported [^2] | Not Supported [^2]|
-|Grad-CAM| ![](./images/gradcam_vgg.png)|![](./images/gradcam_resnet.png) |
-|Score-CAM| ![](./images/scorecam_vgg.png)|![](./images/scorecam_resnet.png) |
-|Grad-CAM++| ![](./images/gradcampp_vgg.png)|![](./images/gradcampp_resnet.png) |
-|Ablation-CAM| ![](./images/ablationcam_vgg.png)|![](./images/ablationcam_resnet.png) |
-|XGrad-CAM| ![](./images/xgradcam_vgg.png)|![](./images/xgradcam_resnet.png) |
-|Zoom-CAM| ![](./images/zoomcam_vgg.png)| ![](./images/zoomcam_resnet.png) |
+| | VGG-16 | ResNet-50                            |
+|------|------|--------------------------------------|
+|CAM | Not Supported [^2] | Not Supported [^2]                   |
+|Grad-CAM| ![](./images/gradcam_vgg.png)| ![](./images/gradcam_resnet.png)     |
+|Score-CAM| ![](./images/scorecam_vgg.png)| ![](./images/scorecam_resnet.png)    |
+|Grad-CAM++| ![](./images/gradcampp_vgg.png)| ![](./images/gradcampp_resnet.png)   |
+|Ablation-CAM| ![](./images/ablationcam_vgg.png)| ![](./images/ablationcam_resnet.png) |
+|XGrad-CAM| ![](./images/xgradcam_vgg.png)| ![](./images/xgradcam_resnet.png)    |
+|Zoom-CAM| ![](./images/zoomcam_vgg.png)| ![](./images/zoomcam_resnet.png)     |
+|Layer-CAM|![](./images/layercam_vgg.png)| ![](./images/layercam_resnet.png)    |
 [^2]: CAM needs a special layer architecture, with a Global Average Pooling layer directly after the last convolutional layer and before the linear layer to work.
 
 ### Backpropagation-based methods
@@ -122,6 +124,8 @@ TODO: more info!
 (Desai2020) Ablation-CAM: Visual Explanations for Deep Convolutional Network via Gradient-free Localization, Desai & Ramaswamy 2020
 
 (Fu2020) Axiom-based Grad-CAM: Towards Accurate Visualization and Explanation of CNNs, Fu et al. 2020
+
+(Jiang2021) LayerCAM: Exploring Hierarchical Activation Maps for Localization, Jiang et al. 2021
 
 (Petsiuk2018) Rise : Randomized Input Sampling for Explanation, Petsiuk et al. 2018
 

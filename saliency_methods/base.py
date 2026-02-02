@@ -12,7 +12,7 @@ import copy
 
 class SaliencyMethod(ABC):
 
-    def __init__(self, net: nn.Module, device: str = "auto"):
+    def __init__(self, net: nn.Module, device: str = "auto", **kwargs):
         """ Create a new SaliencyMethod object.
 
         Parameters
