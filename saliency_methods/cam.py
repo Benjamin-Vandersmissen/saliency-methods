@@ -345,7 +345,7 @@ class ScoreCAM(_CAM):
                                            self.base_score[labels[i]]).squeeze()
 
         # Re-enable hook as we are finished with it.
-        self._hook_target_layer(self.conv_layer)
+        self._hook_target_layer(self.target_layer)
 
         scores = F.softmax(scores, dim=1)
         return scores.reshape((batch_size, conv_channels, 1, 1))
@@ -467,7 +467,7 @@ class AblationCAM(_CAM):
         batch_size = self.in_values.shape[0]
         channels = self.conv_out[-1].shape[1]
 
-        current_weights = self.conv_layer.weight.clone()
+        current_weights = self.target_layer.weight.clone()
         scores = torch.zeros((channels, batch_size))
 
         # Disable hook here, as we need to use the network to calculate the score
@@ -479,19 +479,25 @@ class AblationCAM(_CAM):
 
         with torch.no_grad():
             for i in range(channels):
-                self.conv_layer.weight[i] = 0
+                self.target_layer.weight[i] = 0
                 current_scores = torch.gather(self.net(self.in_values), 1, self.labels)
                 scores[i, :] = safe_divide(initial_score - current_scores, initial_score).squeeze()
-                self.conv_layer.weight[i, :, :, :] = current_weights[i, :, :, :]
+                self.target_layer.weight[i, :, :, :] = current_weights[i, :, :, :]
 
         # Re-enable hook as we are finished with it.
-        self._hook_target_layer(self.conv_layer)
+        self._hook_target_layer(self.target_layer)
         return scores.reshape(batch_size, channels, 1, 1)
 
     def _explain(self, in_values: torch.tensor, labels: torch.Tensor, **kwargs) -> np.ndarray:
         self.in_values = in_values
         self.labels = labels
         return super()._explain(in_values, labels, **kwargs)
+
+    def _init_hooks(self, in_values):
+        super()._init_hooks(in_values)
+        assert isinstance(self.target_layer, torch.nn.Conv2d)  # Only works on Conv2d
+        
+        
 
 
 class XGradCAM(GradCAM):
