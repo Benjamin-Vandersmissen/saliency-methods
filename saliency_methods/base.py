@@ -140,6 +140,15 @@ class SaliencyMethod(ABC):
         labels = torch.argmax(out, dim=1, keepdim=True)
         return labels.cpu().numpy(), self._postprocess(self._explain(in_values, labels, out=out), **kwargs)  # In case we need the prediction scores.
 
+    
+    def __call__(self, *args, **kwargs):
+        return self.explain(*args,**kwargs)
+
+    def __enter__(self):
+        return self
+    
+    def __exit__(self):
+        pass
 
 class CompositeSaliencyMethod(SaliencyMethod):
 
